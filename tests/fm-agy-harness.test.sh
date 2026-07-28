@@ -405,8 +405,8 @@ test_agy_launch_template_is_in_spawn() {
     grep -Fq -- "$1" "$SPAWN" || fail "expected line missing from fm-spawn: $1"
   }
   assert_source_line \
-    "    agy) printf '%s' 'agy -p --output-format json --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__--print-timeout \${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ \"\$(__OPINPUT__ encode launch-brief < __BRIEF__)\"' ;;"
-  pass "fm-spawn: agy launch template is present and byte-pinned"
+    "    agy) printf '%s' 'agy -p --output-format json --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__--print-timeout \${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ \"\$(cat __BRIEF__)\"' ;;"
+  pass "fm-spawn: agy launch template uses raw brief passthrough"
 }
 
 test_agy_model_effort_in_spawn() {
