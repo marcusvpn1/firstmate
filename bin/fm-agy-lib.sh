@@ -174,7 +174,7 @@ fm_agy_wait_for_completion() {
 # this extracts the last complete JSON object.
 fm_agy_collect_output() {
   local target=$1 result_file=$2
-  local capture json_start
+  local capture json_start rel_end json_end
 
   capture=$(fm_backend_tmux_capture "$target" 2000 "fm-agy-collect" 2>/dev/null || true)
   if [ -z "$capture" ]; then
@@ -188,7 +188,14 @@ fm_agy_collect_output() {
     return 1
   fi
 
-  printf '%s\n' "$capture" | tail -n +"$json_start" > "$result_file" 2>/dev/null || {
+  rel_end=$(printf '%s\n' "$capture" | tail -n +"$json_start" | grep -n '^}' | head -1 | cut -d: -f1 || true)
+  if [ -z "$rel_end" ]; then
+    printf 'collect-error: no closing brace found in capture\n'
+    return 1
+  fi
+  json_end=$((json_start + rel_end - 1))
+
+  printf '%s\n' "$capture" | sed -n "${json_start},${json_end}p" > "$result_file" 2>/dev/null || {
     printf 'collect-error: could not write result file\n'
     return 1
   }
@@ -297,12 +304,33 @@ fm_agy_interrupt() {
   fm_backend_tmux_send_key "$target" C-c 2>/dev/null || true
 }
 
+fm_agy_pane_pid() {
+  local target=$1
+  tmux list-panes -t "$target" -F '#{pane_pid}' 2>/dev/null | head -1
+}
+
 fm_agy_terminate() {
   local target=$1
+  local pane_pid
+
   fm_backend_tmux_send_key "$target" C-c 2>/dev/null || true
   sleep 2
+  fm_agy_is_running "$target" || return 0
+
+  printf 'agy: interrupt did not stop process; escalating to SIGTERM\n' >&2
+  pane_pid=$(fm_agy_pane_pid "$target")
+  if [ -n "$pane_pid" ]; then
+    kill -TERM -- "-$pane_pid" 2>/dev/null || kill -TERM "$pane_pid" 2>/dev/null || true
+    sleep 2
+    if fm_agy_is_running "$target"; then
+      printf 'agy: SIGTERM did not stop process; escalating to SIGKILL\n' >&2
+      kill -KILL -- "-$pane_pid" 2>/dev/null || kill -KILL "$pane_pid" 2>/dev/null || true
+      sleep 1
+    fi
+  fi
+
   if fm_agy_is_running "$target"; then
-    printf 'agy: interrupt did not stop process; escalating\n' >&2
+    printf 'agy: process still running after SIGKILL\n' >&2
     return 1
   fi
 }

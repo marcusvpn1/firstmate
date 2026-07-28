@@ -468,7 +468,7 @@ launch_template() {
     # Model and effort flags are passed inline; unsupported effort values are
     # omitted rather than guessed.
     # The --log-file flag writes AGY's internal log to the task temp directory.
-    agy) printf '%s' 'agy -p --output-format json --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+    agy) printf '%s' 'agy -p --output-format json --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     *) return 1 ;;
   esac
 }
