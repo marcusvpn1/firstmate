@@ -174,7 +174,7 @@ fm_agy_wait_for_completion() {
 # this extracts the last complete JSON object.
 fm_agy_collect_output() {
   local target=$1 result_file=$2
-  local capture json_start rel_end json_end
+  local capture json_start json_body rc
 
   capture=$(fm_backend_tmux_capture "$target" 2000 "fm-agy-collect" 2>/dev/null || true)
   if [ -z "$capture" ]; then
@@ -188,14 +188,42 @@ fm_agy_collect_output() {
     return 1
   fi
 
-  rel_end=$(printf '%s\n' "$capture" | tail -n +"$json_start" | grep -n '^}' | head -1 | cut -d: -f1 || true)
-  if [ -z "$rel_end" ]; then
+  json_body=$(printf '%s\n' "$capture" | tail -n +"$json_start" | awk '
+    {
+      line = $0
+      n = length(line)
+      out = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(line, i, 1)
+        out = out c
+        if (esc) { esc = 0; continue }
+        if (in_str) {
+          if (c == "\\") { esc = 1 }
+          else if (c == "\"") { in_str = 0 }
+          continue
+        }
+        if (c == "\"") { in_str = 1; continue }
+        if (c == "{") { depth++ }
+        else if (c == "}") {
+          depth--
+          if (depth == 0) {
+            print out
+            found = 1
+            exit
+          }
+        }
+      }
+      print out
+    }
+    END { if (!found) exit 1 }
+  ')
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
     printf 'collect-error: no closing brace found in capture\n'
     return 1
   fi
-  json_end=$((json_start + rel_end - 1))
 
-  printf '%s\n' "$capture" | sed -n "${json_start},${json_end}p" > "$result_file" 2>/dev/null || {
+  printf '%s\n' "$json_body" > "$result_file" 2>/dev/null || {
     printf 'collect-error: could not write result file\n'
     return 1
   }

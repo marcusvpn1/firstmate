@@ -137,6 +137,60 @@ test_agy_launch_cmd_omits_unsupported_effort() {
   pass "agy_launch_cmd omits unsupported effort xhigh"
 }
 
+# ---- collect output tests --------------------------------------------------
+
+test_agy_collect_output_multiline_json() {
+  local dir out rc
+  dir="$TMP_ROOT/collect-multiline"
+  mkdir -p "$dir"
+
+  rc=0
+  out=$(bash -c '
+    . "$1"
+    fm_backend_tmux_capture() {
+      printf "%s\n" \
+        "some banner line" \
+        "{" \
+        "  \"status\": \"success\"," \
+        "  \"changed_files\": [\"a.txt\"]," \
+        "  \"summary\": \"done\"" \
+        "}" \
+        "user@host:~\$ "
+    }
+    fm_agy_collect_output dummy-target "$2"
+  ' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
+  expect_code 0 "$rc" "collect_output failed on pretty multi-line JSON"
+  assert_contains "$out" "collect-ok" "collect_output did not report ok"
+  bash -c '. "$1"; fm_agy_validate_schema "$2"' _ "$AGY_LIB" "$dir/result.json" >/dev/null \
+    || fail "collected multi-line JSON failed schema validation"
+  grep -q 'user@host' "$dir/result.json" && fail "trailing prompt noise leaked into result.json"
+  pass "collect_output extracts pretty multi-line JSON and drops trailing noise"
+}
+
+test_agy_collect_output_singleline_json() {
+  local dir out rc
+  dir="$TMP_ROOT/collect-singleline"
+  mkdir -p "$dir"
+
+  rc=0
+  out=$(bash -c '
+    . "$1"
+    fm_backend_tmux_capture() {
+      printf "%s\n" \
+        "some banner line" \
+        "{\"status\": \"success\", \"changed_files\": [\"a.txt\"], \"summary\": \"done\"}" \
+        "user@host:~\$ "
+    }
+    fm_agy_collect_output dummy-target "$2"
+  ' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
+  expect_code 0 "$rc" "collect_output failed on compact single-line JSON"
+  assert_contains "$out" "collect-ok" "collect_output did not report ok"
+  bash -c '. "$1"; fm_agy_validate_schema "$2"' _ "$AGY_LIB" "$dir/result.json" >/dev/null \
+    || fail "collected single-line JSON failed schema validation"
+  grep -q 'user@host' "$dir/result.json" && fail "trailing prompt noise leaked into result.json"
+  pass "collect_output extracts compact single-line JSON and drops trailing noise"
+}
+
 # ---- result schema validation tests ---------------------------------------
 
 make_valid_result() {
@@ -503,6 +557,8 @@ test_agy_launch_cmd_shape
 test_agy_launch_cmd_includes_model
 test_agy_launch_cmd_includes_effort
 test_agy_launch_cmd_omits_unsupported_effort
+test_agy_collect_output_multiline_json
+test_agy_collect_output_singleline_json
 test_agy_validate_accepts_valid_result
 test_agy_validate_accepts_error_result
 test_agy_validate_rejects_missing_file
