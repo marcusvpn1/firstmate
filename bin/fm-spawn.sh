@@ -59,11 +59,13 @@
 #   profile consultation. A --secondmate spawn is exempt and resolves the SECONDMATE
 #   harness (config/secondmate-harness -> config/crew-harness -> own), so the
 #   secondmate-vs-crewmate split is DURABLE across every respawn (recovery,
-#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi)
+#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|agy)
 #   overrides it for this spawn (either kind). A non-flag string containing
 #   whitespace is treated as a RAW launch command - the escape hatch for verifying
 #   new adapters. pi-signed launches that exact executable name from PATH and
 #   refuses before endpoint creation when it is unavailable; it never falls back to pi.
+#   agy is EXPERIMENTAL - single-worker only, no secondmate support, headless
+#   execution, and result validation through a strict result.json schema.
 #   config/secondmate-harness may also carry an optional model and effort as extra
 #   whitespace-separated tokens ("<harness> [<model>] [<effort>]"). For a
 #   --secondmate spawn, those tokens apply only when this spawn also resolves its
@@ -389,7 +391,7 @@ FIRSTMATE_HOME=
 
 if [ "$KIND" = secondmate ]; then
   case "${POS[1]:-}" in
-    ''|claude|codex|opencode|pi|pi-signed|grok|kimi)
+    ''|claude|codex|opencode|pi|pi-signed|grok|kimi|agy)
       ARG3=${POS[1]:-}
       ;;
     *' '*)
@@ -455,6 +457,18 @@ launch_template() {
     # Its turn-end signal is a globally configured Stop hook plus a guarded
     # per-task worktree token, so no launch placeholder belongs here.
     kimi) printf '%s' '__KIMIBIN__ __MODELFLAG__--auto' ;;
+    # AGY is a headless harness that runs `agy -p` (--print) to process the
+    # brief non-interactively and exits when done.
+    # It runs inside a PTY (tmux pane) so it sees a TTY; piped stdout is NOT
+    # the protocol. The watcher captures the pane after exit and validates the
+    # per-run result.json artifact. Exit code 0 is not trusted - only a valid
+    # result.json with status=success counts as completion.
+    # AGY does not support interactive steer or turn-end hooks, so there is no
+    # harness-specific hook installed below and no secondmate support.
+    # Model and effort flags are passed inline; unsupported effort values are
+    # omitted rather than guessed.
+    # The --log-file flag writes AGY's internal log to the task temp directory.
+    agy) printf '%s' 'agy -p --output-format json --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     *) return 1 ;;
   esac
 }
@@ -578,7 +592,7 @@ model_flag_for_harness() {
   local harness=$1 model=$2
   [ -n "$model" ] && [ "$model" != default ] || return 0
   case "$harness" in
-    claude|codex|opencode|pi|pi-signed|grok|kimi)
+    claude|codex|opencode|pi|pi-signed|grok|kimi|agy)
       printf -- '--model %s ' "$(shell_quote "$model")"
       ;;
   esac
@@ -615,6 +629,13 @@ effort_flag_for_harness() {
       # its --thinking flag.
       case "$effort" in
         low|medium|high|xhigh|max) printf -- '--thinking %s ' "$(shell_quote "$effort")" ;;
+      esac
+      ;;
+    agy)
+      # AGY supports --effort with low|medium|high as of 1.1.8.
+      # xhigh and max are not accepted and are omitted rather than guessed.
+      case "$effort" in
+        low|medium|high) printf -- '--effort %s ' "$(shell_quote "$effort")" ;;
       esac
       ;;
     # opencode's interactive `opencode --prompt` launch has a verified --model
@@ -1412,6 +1433,11 @@ EOF
       printf 'token=%s\n' "${auth_file##*/}" > "$WT/.fm-kimi-turnend"
       exclude_path '.fm-kimi-turnend'
       ;;
+    agy*)
+      # AGY is headless - it runs, prints JSON, and exits.
+      # No turn-end hook is needed; the watcher detects completion by
+      # capturing the pane and validating the result.json artifact.
+      ;;
   esac
 fi
 
@@ -1480,6 +1506,7 @@ sq_piext=$(shell_quote "$STATE/$ID.pi-ext.ts")
 sq_piturnend=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-turnend-guard.ts")
 sq_piwatch=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-pi-watch.ts")
 sq_opinput=$(shell_quote "$FM_ROOT/bin/fm-operational-input.sh")
+sq_agylog=$(shell_quote "$TASK_TMP/agy.log")
 MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT")
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
@@ -1490,6 +1517,7 @@ LAUNCH=${LAUNCH//__PIEXT__/$sq_piext}
 LAUNCH=${LAUNCH//__PITURNEND__/$sq_piturnend}
 LAUNCH=${LAUNCH//__PIWATCH__/$sq_piwatch}
 LAUNCH=${LAUNCH//__OPINPUT__/$sq_opinput}
+LAUNCH=${LAUNCH//__AGYLOGFILE__/$sq_agylog}
 if [ "$KIND" = secondmate ]; then
   sq_home=$(shell_quote "$PROJ_ABS")
   LAUNCH="FM_ROOT_OVERRIDE= FM_STATE_OVERRIDE= FM_DATA_OVERRIDE= FM_PROJECTS_OVERRIDE= FM_CONFIG_OVERRIDE= FM_HOME=$sq_home $LAUNCH"
