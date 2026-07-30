@@ -64,8 +64,10 @@
 #   whitespace is treated as a RAW launch command - the escape hatch for verifying
 #   new adapters. pi-signed launches that exact executable name from PATH and
 #   refuses before endpoint creation when it is unavailable; it never falls back to pi.
-#   agy is EXPERIMENTAL - single-worker only, no secondmate support, headless
-#   execution, and result validation through a strict result.json schema.
+#   agy is EXPERIMENTAL - single-worker only, no secondmate support. It launches
+#   bare into its interactive TUI (a trust dialog, then a real composer) and
+#   receives the brief as typed input once ready, matching the other verified
+#   interactive harnesses; see the harness-adapters skill for the verified facts.
 #   config/secondmate-harness may also carry an optional model and effort as extra
 #   whitespace-separated tokens ("<harness> [<model>] [<effort>]"). For a
 #   --secondmate spawn, those tokens apply only when this spawn also resolves its
@@ -457,18 +459,18 @@ launch_template() {
     # Its turn-end signal is a globally configured Stop hook plus a guarded
     # per-task worktree token, so no launch placeholder belongs here.
     kimi) printf '%s' '__KIMIBIN__ __MODELFLAG__--auto' ;;
-    # AGY is a headless harness that runs `agy -p` (--print) to process the
-    # brief non-interactively and exits when done.
-    # It runs inside a PTY (tmux pane) so it sees a TTY; piped stdout is NOT
-    # the protocol. The watcher captures the pane after exit and validates the
-    # per-run result.json artifact. Exit code 0 is not trusted - only a valid
-    # result.json with status=success counts as completion.
-    # AGY does not support interactive steer or turn-end hooks, so there is no
-    # harness-specific hook installed below and no secondmate support.
+    # AGY (Antigravity CLI) launches bare into its real interactive TUI, the
+    # same shape as claude/codex/opencode/pi/grok/kimi: no positional prompt,
+    # no `-p`/`--output-format json` print mode. Print mode ran one turn then
+    # exited the process entirely, which cannot drive a multi-step gated flow
+    # like no-mistakes (commit -> PR -> respond to review/test gates -> CI
+    # green) because nobody is left alive to answer a gate after the first
+    # turn. AGY has no FIRSTMATE_OP parser, so the brief is sent as typed
+    # composer input (below), not the encoded launch-brief form the other
+    # harnesses use.
     # Model and effort flags are passed inline; unsupported effort values are
-    # omitted rather than guessed.
-    # The --log-file flag writes AGY's internal log to the task temp directory.
-    agy) printf '%s' 'agy -p "$(cat __BRIEF__)" --output-format json --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__' ;;
+    # omitted rather than guessed (see effort_flag_for_harness).
+    agy) printf '%s' 'agy --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__' ;;
     *) return 1 ;;
   esac
 }
@@ -1212,6 +1214,92 @@ kimi_capture() {
   fm_backend_capture "$BACKEND" "$T" 120 "$W" 2>/dev/null || true
 }
 
+# AGY (Antigravity CLI) launch-then-send (VERIFIED 2026-07-29, agy 1.1.8):
+# bare launch shows a first-run-per-directory trust dialog ("Do you trust the
+# contents of this project?"), accepted with a single Enter (the default
+# selection is already "Yes, I trust this folder"). The composer is then
+# ready once the footer shows the idle "? for shortcuts" hint with no busy
+# text. Sending a raw multi-line string via a literal keystroke send submits
+# each embedded newline as its own separate turn rather than inserting a line
+# break (verified live: a 3-line brief sent as one literal string produced
+# three separate replies). AGY's own shortcuts panel documents a `\` + Enter
+# fallback for inserting a literal newline without submitting, so every line
+# but the last is sent as "<line>\" followed by a real Enter, and only the
+# final line's Enter actually submits. Delivery is confirmed by the busy
+# signature (spinner + "Generating..." above the composer, footer
+# "esc to cancel") appearing, proving the turn actually started.
+agy_capture() {
+  fm_backend_capture "$BACKEND" "$T" 200 "$W" 2>/dev/null || true
+}
+
+agy_trust_dialog_showing() {  # <plain-pane-capture>
+  printf '%s\n' "$1" | grep -Fq 'Do you trust the contents of this project'
+}
+
+agy_composer_is_idle() {  # <plain-pane-capture>
+  printf '%s\n' "$1" | grep -Fq '? for shortcuts'
+}
+
+agy_is_busy() {  # <plain-pane-capture>
+  printf '%s\n' "$1" | grep -Eq 'Generating\.\.\.|esc to cancel'
+}
+
+agy_wait_for_ready() {
+  local pane i=0 max=${FM_AGY_READY_POLLS:-60} interval=${FM_AGY_POLL_INTERVAL:-0.5} trust_sent=0
+  while [ "$i" -lt "$max" ]; do
+    pane=$(agy_capture)
+    if agy_composer_is_idle "$pane"; then
+      return 0
+    fi
+    if [ "$trust_sent" -eq 0 ] && agy_trust_dialog_showing "$pane"; then
+      spawn_send_key "$T" Enter
+      trust_sent=1
+    fi
+    i=$((i + 1))
+    [ "$i" -ge "$max" ] || sleep "$interval"
+  done
+  return 1
+}
+
+# Sends the brief file's content as typed composer input. Every line but the
+# last is sent as "<line>\" plus a real Enter (AGY's documented newline-insert
+# fallback); the last line's Enter submits. Buffers one line behind so the
+# final iteration can tell it is last without a second file pass.
+agy_send_brief() {  # <brief-file>
+  local brief_file=$1 line prev_line='' have_prev=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$have_prev" -eq 1 ]; then
+      spawn_send_literal "$T" "$prev_line\\"
+      spawn_send_key "$T" Enter
+      sleep "${FM_AGY_LINE_SLEEP:-0.1}"
+    fi
+    prev_line=$line
+    have_prev=1
+  done < "$brief_file"
+  if [ "$have_prev" -eq 1 ]; then
+    spawn_send_literal "$T" "$prev_line"
+    spawn_send_key "$T" Enter
+  fi
+}
+
+agy_wait_for_delivery() {
+  local pane i=0 max=${FM_AGY_DELIVERY_POLLS:-40} interval=${FM_AGY_POLL_INTERVAL:-0.5}
+  while [ "$i" -lt "$max" ]; do
+    pane=$(agy_capture)
+    if agy_is_busy "$pane" || agy_composer_is_idle "$pane"; then
+      return 0
+    fi
+    i=$((i + 1))
+    [ "$i" -ge "$max" ] || sleep "$interval"
+  done
+  return 1
+}
+
+agy_spawn_fail() {  # <detail>
+  printf 'failed: %s\n' "$1" >> "$STATE/$ID.status"
+  echo "error: $1; inspect window $T" >&2
+}
+
 kimi_capture_has_empty_composer() {  # <plain-pane-capture>
   printf '%s\n' "$1" \
     | grep -Eq '^[[:space:]]*(│|┃|\|)[[:space:]]*>[[:space:]]*(│|┃|\|)[[:space:]]*$'
@@ -1434,9 +1522,9 @@ EOF
       exclude_path '.fm-kimi-turnend'
       ;;
     agy*)
-      # AGY is headless - it runs, prints JSON, and exits.
-      # No turn-end hook is needed; the watcher detects completion by
-      # capturing the pane and validating the result.json artifact.
+      # AGY has no verified turn-end hook surface (no documented lifecycle
+      # hook to install). The watcher relies on pane busy/idle detection
+      # (bin/fm-tmux-lib.sh's agy busy regex) instead.
       ;;
   esac
 fi
@@ -1506,7 +1594,6 @@ sq_piext=$(shell_quote "$STATE/$ID.pi-ext.ts")
 sq_piturnend=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-turnend-guard.ts")
 sq_piwatch=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-pi-watch.ts")
 sq_opinput=$(shell_quote "$FM_ROOT/bin/fm-operational-input.sh")
-sq_agylog=$(shell_quote "$TASK_TMP/agy.log")
 MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT")
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
@@ -1517,7 +1604,6 @@ LAUNCH=${LAUNCH//__PIEXT__/$sq_piext}
 LAUNCH=${LAUNCH//__PITURNEND__/$sq_piturnend}
 LAUNCH=${LAUNCH//__PIWATCH__/$sq_piwatch}
 LAUNCH=${LAUNCH//__OPINPUT__/$sq_opinput}
-LAUNCH=${LAUNCH//__AGYLOGFILE__/$sq_agylog}
 if [ "$KIND" = secondmate ]; then
   sq_home=$(shell_quote "$PROJ_ABS")
   LAUNCH="FM_ROOT_OVERRIDE= FM_STATE_OVERRIDE= FM_DATA_OVERRIDE= FM_PROJECTS_OVERRIDE= FM_CONFIG_OVERRIDE= FM_HOME=$sq_home $LAUNCH"
@@ -1555,6 +1641,17 @@ if [ "$HARNESS" = kimi ]; then
   fi
   if ! kimi_wait_for_delivery; then
     kimi_spawn_fail "kimi brief pointer delivery was not confirmed"
+    exit 1
+  fi
+fi
+if [ "$HARNESS" = agy ]; then
+  if ! agy_wait_for_ready; then
+    agy_spawn_fail "agy did not show a verified ready signal (trust dialog or idle composer) before brief delivery"
+    exit 1
+  fi
+  agy_send_brief "$BRIEF_REAL"
+  if ! agy_wait_for_delivery; then
+    agy_spawn_fail "agy brief delivery was not confirmed (no busy or idle signal after submit)"
     exit 1
   fi
 fi

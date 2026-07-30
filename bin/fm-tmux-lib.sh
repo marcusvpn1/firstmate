@@ -76,6 +76,12 @@
 # busy signals on their own.
 # The full moon-phase set remains locale- and emoji-font-sensitive because Kimi
 # exposes no stable ASCII busy token.
+# AGY (Antigravity CLI, VERIFIED 2026-07-29 on agy 1.1.8): a busy turn shows a
+# spinner glyph plus "Generating..." above the composer, and the footer bar
+# shows "esc to cancel"; idle shows only "? for shortcuts" with neither. Both
+# tokens were captured live and are distinct from every other harness's busy
+# text ("esc to cancel" vs codex/claude's "esc to interrupt", grok's exact
+# "Ctrl+c:cancel").
 FM_TMUX_BUSY_REGEX_DEFAULT='esc (to )?interrupt|Working\.\.\.|Ctrl\+c:cancel'
 FM_TMUX_CLAUDE_BUSY_REGEX_DEFAULT='esc to interrupt|…[[:space:]]+\([0-9]+[smh]'
 FM_TMUX_CODEX_BUSY_REGEX_DEFAULT='esc to interrupt'
@@ -83,7 +89,7 @@ FM_TMUX_OPENCODE_BUSY_REGEX_DEFAULT='esc interrupt'
 FM_TMUX_PI_BUSY_REGEX_DEFAULT='Working\.\.\.'
 FM_TMUX_GROK_BUSY_REGEX_DEFAULT='Ctrl\+c:cancel'
 FM_TMUX_KIMI_BUSY_REGEX_DEFAULT='^[[:space:]]*(🌑|🌒|🌓|🌔|🌕|🌖|🌗|🌘)[[:space:]]+·[[:space:]]+'
-FM_TMUX_AGY_BUSY_REGEX_DEFAULT='(Thinking|Working|Analyzing|Executing|Processing)\.\.\.|(Task|Step|Turn) [0-9]+/[0-9]+'
+FM_TMUX_AGY_BUSY_REGEX_DEFAULT='esc to cancel|Generating\.\.\.'
 
 fm_busy_lines_match() {  # [harness]
   local harness=${1:-} lines regex
