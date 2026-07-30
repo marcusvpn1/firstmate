@@ -9,7 +9,7 @@
 # This file is sourced by scripts and has no side effects on source.
 
 # Known harness command names; extend when a new adapter is verified.
-FM_HARNESS_RE='claude|codex|opencode|grok|kimi|^pi$|^pi-signed$'
+FM_HARNESS_RE='claude|codex|opencode|grok|kimi|agy|antigravity|^pi$|^pi-signed$'
 
 # Walk the current process ancestry (up to 8 hops) and print the first pid whose
 # command looks like a verified harness. The harness pid lives as long as the
@@ -19,7 +19,7 @@ fm_harness_ancestry_pid() {
   for _ in 1 2 3 4 5 6 7 8; do
     comm=$(ps -o comm= -p "$pid" 2>/dev/null) || return 1
     args=$(ps -o args= -p "$pid" 2>/dev/null)
-    if printf '%s' "$(basename "$comm")" | grep -qE "$FM_HARNESS_RE"; then
+    if printf '%s' "$(basename -- "$comm")" | grep -qE "$FM_HARNESS_RE"; then
       echo "$pid"; return 0
     fi
     # Bare interpreter (e.g. node): match the harness name in its script path.
