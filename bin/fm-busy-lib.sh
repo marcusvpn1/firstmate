@@ -39,7 +39,8 @@
 #   fm-interrupt     a firstmate-controlled interruption of the worker
 #   fm-recovery      a documented recovery reset after relaunch
 # Classifier-only sources (never written into a record):
-#   endpoint-gone, herdr-native, grok-regex, missing, malformed,
+#   endpoint-gone, herdr-native, grok-regex, agy-pane, agy-inconclusive,
+#   missing, malformed,
 #   gen-mismatch, source-mismatch, kimi-unverified, codex-unverified,
 #   capture-failed, no-target
 #
@@ -50,15 +51,17 @@
 #   3. a valid, gen-matching, source-trusted record -> its state and source
 #   4. no record at all: herdr's native busy verdict is trusted as busy
 #      (generation state is sufficient for busy, not for idle), then the
-#      Grok-only temporary regex fallback classifies a grok task from its
-#      rendered tail, then unknown missing
+#      narrowly scoped rendered fallbacks classify Grok and AGY tasks from
+#      their verified pane signatures, then unknown missing
 #   5. malformed, stale, or untrusted records -> unknown, never a fallback
-# The Grok arm is the ONLY rendered-text classification that survives the
-# redesign, because Grok's structured lifecycle was not credited-live-verified
-# in the approved audit; it is scoped to harness=grok and can never classify
-# another adapter. The delivery guards in bin/fm-tmux-lib.sh match rendered
-# footers for submit acknowledgement and away-mode supervisor injection only;
-# neither is a recorded worker state source.
+# Grok retains upstream's rendered-text fallback because its structured
+# lifecycle was not credited-live-verified in the approved audit. The local
+# experimental AGY adapter likewise has no verified lifecycle hook, so its
+# live-verified busy and idle pane signatures are classified here. Both arms
+# are harness-scoped and can never classify another adapter. The delivery
+# guards in bin/fm-tmux-lib.sh match rendered footers for submit
+# acknowledgement and away-mode supervisor injection only; neither is a
+# recorded worker state source.
 #
 # Codex negotiation (fm_busy_codex_appserver_observable,
 # fm_busy_codex_hooks_verified): the approved contract prefers Codex's
@@ -71,6 +74,13 @@
 # Sourcing: set -u and set -e safe; no subshell-unfriendly globals.
 
 FM_BUSY_LIB_VERSION=v1
+
+# AGY has no verified lifecycle hook. Its interactive TUI does expose explicit,
+# live-verified busy and idle states, so the semantic classifier owns these
+# harness-scoped fallback signatures instead of leaving task-state inference in
+# the delivery-oriented tmux reader.
+FM_BUSY_AGY_BUSY_REGEX_DEFAULT='esc to cancel|Generating\.\.\.'
+FM_BUSY_AGY_IDLE_TEXT_DEFAULT='? for shortcuts'
 
 # Standalone-Kimi verification gate. Empty means no installed Kimi version
 # has passed live verification, so every standalone Kimi task classifies
@@ -255,12 +265,27 @@ fm_busy_grok_tail_busy() {
     | grep -qiE "${FM_BUSY_REGEX:-${FM_TMUX_GROK_BUSY_REGEX_DEFAULT:-Ctrl\\+c:cancel}}"
 }
 
+# fm_busy_agy_tail_state: classify AGY only from its explicit verified pane
+# signatures. Busy wins if both states somehow appear in one bounded capture;
+# idle requires its positive footer signal, and every other capture is unknown.
+fm_busy_agy_tail_state() {
+  local tail
+  tail=$(grep -v '^[[:space:]]*$' | tail -12)
+  if printf '%s' "$tail" | grep -qiE "$FM_BUSY_AGY_BUSY_REGEX_DEFAULT"; then
+    printf 'busy'
+  elif printf '%s' "$tail" | grep -Fq "$FM_BUSY_AGY_IDLE_TEXT_DEFAULT"; then
+    printf 'idle'
+  else
+    printf 'unknown'
+  fi
+}
+
 # fm_busy_classify: semantic classification for a task whose endpoint the
 # caller has already established as present. Prints "<verdict> <source>":
 # busy|idle|unknown plus the producing source (see header). Never probes
 # process state. <tail40> is optional pre-captured plain output used only by
-# the Grok arm; when absent the Grok arm captures through fm_backend_capture
-# if available, else reports unknown capture-failed.
+# the Grok and AGY arms; when absent either arm captures through
+# fm_backend_capture if available, else reports unknown capture-failed.
 fm_busy_classify() {  # <backend> <target> <harness> <id> <state-dir> [tail40]
   local backend=$1 target=$2 harness=$3 id=$4 state=$5 tail40=${6-}
   local out rc r_state r_source native
@@ -325,6 +350,25 @@ fm_busy_classify() {  # <backend> <target> <harness> <id> <state-dir> [tail40]
       else
         printf 'idle grok-regex'
       fi
+      return 0
+      ;;
+    agy*)
+      if [ -z "$tail40" ]; then
+        if command -v fm_backend_capture >/dev/null 2>&1; then
+          tail40=$(fm_backend_capture "$backend" "$target" 40 2>/dev/null) || {
+            printf 'unknown capture-failed'
+            return 0
+          }
+        else
+          printf 'unknown capture-failed'
+          return 0
+        fi
+      fi
+      case "$(printf '%s' "$tail40" | fm_busy_agy_tail_state)" in
+        busy) printf 'busy agy-pane' ;;
+        idle) printf 'idle agy-pane' ;;
+        *) printf 'unknown agy-inconclusive' ;;
+      esac
       return 0
       ;;
   esac

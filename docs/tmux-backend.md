@@ -59,9 +59,10 @@ Unreadable, incomplete, or structurally ambiguous boxes fail closed, and panes w
 The shared classifier accepts a shell glyph as an empty agent composer only inside a verified bordered composer.
 A bare shell prompt is `unknown`, so away-mode escalation is never injected into a dead shell.
 
-Busy state is not read from rendered text on this backend.
-A task's busy, idle, unknown, or dead verdict comes from the semantic busy-state contract owned by `bin/fm-busy-lib.sh`; [architecture](architecture.md#busy-state-is-semantic-per-adapter) owns its boundaries.
-The one remaining rendered-tail reader is Grok's isolated fallback inside that contract, which can only classify a Grok task.
+Task busy state is normally not read from rendered text on this backend.
+A task's busy, idle, unknown, or dead verdict comes from the busy-state contract owned by `bin/fm-busy-lib.sh`; [architecture](architecture.md#busy-state-is-semantic-per-adapter) owns its boundaries.
+The contract retains two harness-scoped rendered exceptions: Grok's isolated fallback and the experimental AGY adapter's live-verified explicit busy and idle pane signatures.
+Neither exception can classify another harness, and an inconclusive AGY capture is unknown rather than idle.
 The submit acknowledgement and away-mode supervisor-pane busy guard below still consult rendered output, but only to decide whether input can be delivered, never to decide recorded task state.
 The supervisor guard selects only the detected primary harness's signature rather than a global union of vendor patterns.
 

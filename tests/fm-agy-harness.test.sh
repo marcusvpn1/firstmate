@@ -367,21 +367,25 @@ test_agy_busy_regex_matches_expected_patterns() {
   # shellcheck source=/dev/null
   . "$ROOT/bin/fm-tmux-lib.sh"
 
-  printf 'Thinking...\n' | fm_busy_lines_match agy || fail "Thinking... not busy"
-  printf 'Working...\n' | fm_busy_lines_match agy || fail "Working... not busy"
-  printf 'Analyzing...\n' | fm_busy_lines_match agy || fail "Analyzing... not busy"
-  printf 'Executing...\n' | fm_busy_lines_match agy || fail "Executing... not busy"
-  printf 'Processing...\n' | fm_busy_lines_match agy || fail "Processing... not busy"
-  printf 'Task 3/7\n' | fm_busy_lines_match agy || fail "Task N/M not busy"
-  printf 'Step 1/5\n' | fm_busy_lines_match agy || fail "Step N/M not busy"
+  printf '⣷  Generating...\n' | fm_busy_lines_match agy || fail "spinner + Generating... not busy"
+  printf 'Generating...\n' | fm_busy_lines_match agy || fail "Generating... not busy"
+  printf 'esc to cancel                          Gemini 3.6 Flash · high\n' \
+    | fm_busy_lines_match agy || fail "esc to cancel footer not busy"
 
+  if printf '? for shortcuts                       Gemini 3.6 Flash · high\n' \
+    | fm_busy_lines_match agy; then
+    fail "idle footer (? for shortcuts) was misread as busy"
+  fi
   if printf 'Idle output\n' | fm_busy_lines_match agy; then
     fail "ordinary output was misread as busy"
   fi
   if printf 'esc to interrupt\n' | fm_busy_lines_match agy; then
-    fail "non-AGY busy token leaked into AGY matcher"
+    fail "non-AGY busy token (codex/claude's esc to interrupt) leaked into AGY matcher"
   fi
-  pass "agy busy regex matches expected patterns and rejects idle output"
+  if printf 'Ctrl+c:cancel\n' | fm_busy_lines_match agy; then
+    fail "grok's exact busy token leaked into AGY's harness-scoped matcher"
+  fi
+  pass "agy busy regex matches the verified Generating.../esc to cancel signature and rejects idle output"
 }
 
 test_agy_busy_regex_does_not_leak_to_other_harnesses() {
@@ -389,13 +393,33 @@ test_agy_busy_regex_does_not_leak_to_other_harnesses() {
   # shellcheck source=/dev/null
   . "$ROOT/bin/fm-tmux-lib.sh"
 
-  if printf 'Task 3/7\n' | fm_busy_lines_match claude; then
+  if printf 'Generating...\n' | fm_busy_lines_match claude; then
     fail "AGY busy token leaked into claude matcher"
   fi
-  if printf 'Step 1/5\n' | fm_busy_lines_match codex; then
+  if printf 'esc to cancel\n' | fm_busy_lines_match codex; then
     fail "AGY busy token leaked into codex matcher"
   fi
+  if printf 'esc to cancel\n' | fm_busy_lines_match grok; then
+    fail "AGY busy token leaked into grok matcher"
+  fi
   pass "agy busy regex is harness-scoped and does not leak"
+}
+
+test_agy_busy_state_uses_new_lifecycle_owner() {
+  local state out
+  state="$TMP_ROOT/semantic-busy/state"
+  mkdir -p "$state"
+  # shellcheck source=/dev/null
+  . "$ROOT/bin/fm-busy-lib.sh"
+
+  out=$(fm_busy_classify tmux w1 agy agy-task "$state" 'Generating...')
+  [ "$out" = 'busy agy-pane' ] || fail "new busy-state owner did not classify AGY busy: $out"
+  out=$(fm_busy_classify tmux w1 agy agy-task "$state" '? for shortcuts')
+  [ "$out" = 'idle agy-pane' ] || fail "new busy-state owner did not classify AGY idle: $out"
+  out=$(fm_busy_classify tmux w1 agy agy-task "$state" 'ordinary output')
+  [ "$out" = 'unknown agy-inconclusive' ] \
+    || fail "new busy-state owner promoted an inconclusive AGY capture: $out"
+  pass "agy busy and idle pane signatures are reconciled through the new lifecycle owner"
 }
 
 # ---- spawn launch template tests ------------------------------------------
@@ -405,8 +429,19 @@ test_agy_launch_template_is_in_spawn() {
     grep -Fq -- "$1" "$SPAWN" || fail "expected line missing from fm-spawn: $1"
   }
   assert_source_line \
-    "    agy) printf '%s' 'agy -p --output-format json --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__--print-timeout \${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ \"\$(__OPINPUT__ encode launch-brief < __BRIEF__)\"' ;;"
-  pass "fm-spawn: agy launch template is present and byte-pinned"
+    "    agy) printf '%s' 'agy --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__' ;;"
+  pass "fm-spawn: agy launch template is a bare interactive launch and byte-pinned"
+}
+
+test_agy_launch_template_has_no_print_mode_flags() {
+  local template
+  template=$(grep -F "agy) printf '%s' 'agy --dangerously-skip-permissions" "$SPAWN")
+  [ -n "$template" ] || fail "agy launch template not found in fm-spawn"
+  assert_not_contains "$template" ' -p ' "agy launch template still passes -p (print mode)"
+  assert_not_contains "$template" '--output-format' "agy launch template still passes --output-format"
+  assert_not_contains "$template" '--print-timeout' "agy launch template still passes --print-timeout"
+  assert_not_contains "$template" '__BRIEF__' "agy launch template still embeds the brief inline instead of typing it after launch"
+  pass "fm-spawn: agy launch template dropped every print-mode flag"
 }
 
 test_agy_model_effort_in_spawn() {
@@ -449,6 +484,14 @@ SH
 }
 
 # ---- mock spawn test ------------------------------------------------------
+#
+# The fake tmux below models AGY's verified interactive state machine:
+#   ""/booted -> (submit Enter) -> trust-dialog (if FM_FAKE_AGY_TRUST=yes) -> ready
+#   ready -> (a "\"-suffixed literal + Enter, from a non-final brief line) -> typing
+#   typing -> (a plain literal with no trailing "\", the final brief line) -> typing-final
+#   typing-final -> (Enter, the real submit) -> busy (if FM_FAKE_AGY_DELIVERY=yes)
+# The first-ever literal send is always the launch command (LAUNCH_LOG); every
+# later literal send is a brief content line (POINTER_LOG).
 
 make_spawn_fakebin() {
   local dir=$1 fakebin
@@ -456,13 +499,101 @@ make_spawn_fakebin() {
   cat > "$fakebin/tmux" <<'SH'
 #!/usr/bin/env bash
 set -u
+printf '%s\n' "$*" >> "${FM_FAKE_TMUX_CALL_LOG:-/dev/null}"
+state=$(cat "$FM_FAKE_AGY_STATE" 2>/dev/null || true)
+fake_screen() {
+  case "$state" in
+    trust-dialog)
+      printf 'Do you trust the contents of this project?\n\n> Yes, I trust this folder\n  No, exit\n'
+      ;;
+    ready|done)
+      printf '────────\n>\n────────\n? for shortcuts                     Gemini 3.6 Flash · high\n'
+      ;;
+    typing|typing-final)
+      printf '────────\n> queued brief content\n────────\n                                     Gemini 3.6 Flash · high\n'
+      ;;
+    busy)
+      printf '────────\n> \n⣷  Generating...\n────────\nesc to cancel                       Gemini 3.6 Flash · high\n'
+      ;;
+    *)
+      printf 'shell starting\n$ \n'
+      ;;
+  esac
+}
 case "$*" in
   *"#{pane_current_path}"*) printf '%s\n' "${FM_FAKE_PANE_PATH:-}"; exit 0 ;;
 esac
 case "${1:-}" in
   display-message) printf 'firstmate\n'; exit 0 ;;
   list-windows) exit 0 ;;
-  has-session|new-session|new-window|send-keys|kill-window) exit 0 ;;
+  has-session|new-session|new-window|kill-window) exit 0 ;;
+  send-keys)
+    prev=
+    literal=
+    for arg in "$@"; do
+      if [ "$prev" = -l ]; then literal=$arg; break; fi
+      prev=$arg
+    done
+    if [ -n "$literal" ]; then
+      case "$state" in
+        ''|booted)
+          printf '%s\n' "$literal" >> "$FM_FAKE_LAUNCH_LOG"
+          printf 'booted\n' > "$FM_FAKE_AGY_STATE"
+          ;;
+        *)
+          printf '%s\n' "$literal" >> "$FM_FAKE_POINTER_LOG"
+          case "$literal" in
+            *'\') printf 'typing\n' > "$FM_FAKE_AGY_STATE" ;;
+            *) printf 'typing-final\n' > "$FM_FAKE_AGY_STATE" ;;
+          esac
+          ;;
+      esac
+      exit 0
+    fi
+    case " $* " in
+      *' Enter '*)
+        case "$state" in
+          booted)
+            if [ "${FM_FAKE_AGY_READY:-yes}" = yes ]; then
+              if [ "${FM_FAKE_AGY_TRUST:-yes}" = yes ]; then
+                printf 'trust-dialog\n' > "$FM_FAKE_AGY_STATE"
+              else
+                printf 'ready\n' > "$FM_FAKE_AGY_STATE"
+              fi
+            fi
+            ;;
+          trust-dialog)
+            printf 'ready\n' > "$FM_FAKE_AGY_STATE"
+            ;;
+          typing)
+            : # "\" + Enter inserts a newline in the composer; state stays "typing"
+            ;;
+          typing-final)
+            if [ "${FM_FAKE_AGY_DELIVERY:-yes}" = yes ]; then
+              printf 'busy\n' > "$FM_FAKE_AGY_STATE"
+            fi
+            ;;
+        esac
+        ;;
+    esac
+    exit 0
+    ;;
+  capture-pane)
+    start= end= prev=
+    for arg in "$@"; do
+      case "$prev" in
+        -S) start=$arg ;;
+        -E) end=$arg ;;
+      esac
+      case "$arg" in -S|-E) prev=$arg ;; *) prev= ;; esac
+    done
+    case "$start:$end" in
+      *[!0-9:]*|'':*|*:'') fake_screen ;;
+      *) fake_screen | awk -v start="$start" -v end="$end" \
+           'NR - 1 >= start && NR - 1 <= end' ;;
+    esac
+    exit 0
+    ;;
 esac
 exit 0
 SH
@@ -472,7 +603,8 @@ SH
 }
 
 make_spawn_case() {
-  local name=$1 case_dir home proj wt fakebin id
+  local name=$1 brief_lines case_dir home proj wt fakebin id
+  brief_lines=${2:-agy brief for test}
   case_dir="$TMP_ROOT/$name"
   home="$case_dir/home"
   proj="$case_dir/project"
@@ -480,47 +612,134 @@ make_spawn_case() {
   fakebin=$(make_spawn_fakebin "$case_dir/fake")
   id="agy-$name-x1"
   mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config"
-  printf 'agy brief for test\n' > "$home/data/$id/brief.md"
+  printf '%s\n' "$brief_lines" > "$home/data/$id/brief.md"
   fm_git_worktree "$proj" "$wt" "fm/$id"
   touch "$home/state/.last-watcher-beat"
+  : > "$case_dir/launch.log"
+  : > "$case_dir/pointer.log"
+  : > "$case_dir/agy.state"
+  : > "$case_dir/tmux-calls.log"
   printf '%s\n' "$case_dir|$home|$proj|$wt|$fakebin|$id"
 }
 
 run_agy_spawn() {
-  local home=$1 proj=$2 wt=$3 fakebin=$4 id=$5
+  local case_dir=$1 home=$2 proj=$3 wt=$4 fakebin=$5 id=$6
+  shift 6
   FM_ROOT_OVERRIDE='' FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
-    FM_AGY_PRINT_TIMEOUT=600 \
+    FM_FAKE_LAUNCH_LOG="$case_dir/launch.log" \
+    FM_FAKE_POINTER_LOG="$case_dir/pointer.log" \
+    FM_FAKE_AGY_STATE="$case_dir/agy.state" \
+    FM_FAKE_TMUX_CALL_LOG="$case_dir/tmux-calls.log" \
+    FM_AGY_READY_POLLS=5 FM_AGY_DELIVERY_POLLS=5 FM_AGY_POLL_INTERVAL=0 FM_AGY_LINE_SLEEP=0 \
     PATH="$fakebin:$BASE_PATH" \
-    "$SPAWN" "$id" "$proj" agy 2>&1
+    "$SPAWN" "$id" "$proj" agy "$@" 2>&1
+}
+
+read_agy_spawn_record() {
+  IFS='|' read -r CASE_DIR HOME_DIR PROJ_DIR WT_DIR FAKEBIN_DIR ID <<EOF
+$1
+EOF
 }
 
 test_agy_spawn_succeeds() {
-  local rec case_dir home proj wt fakebin id out status
+  local rec out status
   rec=$(make_spawn_case spawn-ok)
-  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
-$rec
-EOF
-  out=$(run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id")
+  read_agy_spawn_record "$rec"
+  out=$(run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$ID")
   status=$?
   expect_code 0 "$status" "agy spawn should succeed"
-  assert_contains "$out" "spawned $id harness=agy" "agy spawn did not report success"
+  assert_contains "$out" "spawned $ID harness=agy" "agy spawn did not report success"
   pass "fm-spawn: agy spawn reports expected output"
 }
 
 test_agy_spawn_records_meta() {
-  local rec case_dir home proj wt fakebin id out status meta
+  local rec meta
   rec=$(make_spawn_case spawn-meta)
-  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
-$rec
-EOF
-  out=$(run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id")
-  meta="$home/state/$id.meta"
+  read_agy_spawn_record "$rec"
+  run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$ID" >/dev/null
+  meta="$HOME_DIR/state/$ID.meta"
   assert_present "$meta" "meta file was not created for agy spawn"
   assert_grep 'harness=agy' "$meta" "meta did not record harness=agy"
   pass "fm-spawn: agy spawn records harness=agy in meta"
+}
+
+test_agy_accepts_trust_dialog_before_brief_delivery() {
+  local rec out status launch pointer
+  rec=$(make_spawn_case trust-dialog)
+  read_agy_spawn_record "$rec"
+  out=$(FM_FAKE_AGY_TRUST=yes run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$ID")
+  status=$?
+  expect_code 0 "$status" "agy spawn should survive an untrusted-directory trust dialog"
+  assert_contains "$out" "spawned $ID harness=agy" "agy spawn did not report success after the trust dialog"
+  launch=$(cat "$CASE_DIR/launch.log")
+  assert_contains "$launch" "agy --dangerously-skip-permissions" "agy launch command was not the bare interactive form"
+  assert_not_contains "$launch" " -p " "agy launch command still passed -p"
+  pointer=$(cat "$CASE_DIR/pointer.log")
+  assert_contains "$pointer" "agy brief for test" "agy did not type the brief content after accepting the trust dialog"
+  pass "fm-spawn: agy accepts the trust dialog and still delivers the brief"
+}
+
+test_agy_multiline_brief_uses_backslash_continuation() {
+  local rec out status pointer
+  rec=$(make_spawn_case multiline $'line one\nline two\nline three')
+  read_agy_spawn_record "$rec"
+  out=$(FM_FAKE_AGY_TRUST=no run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$ID")
+  status=$?
+  expect_code 0 "$status" "agy spawn should succeed for a multi-line brief"
+  pointer=$(cat "$CASE_DIR/pointer.log")
+  [ "$(printf '%s\n' "$pointer" | sed -n 1p)" = "line one\\" ] \
+    || fail "first brief line was not sent with a trailing backslash continuation: $pointer"
+  [ "$(printf '%s\n' "$pointer" | sed -n 2p)" = "line two\\" ] \
+    || fail "middle brief line was not sent with a trailing backslash continuation: $pointer"
+  [ "$(printf '%s\n' "$pointer" | sed -n 3p)" = 'line three' ] \
+    || fail "final brief line unexpectedly carried a continuation backslash: $pointer"
+  pass "fm-spawn: agy sends every non-final brief line with a backslash continuation and submits only on the last line"
+}
+
+test_agy_readiness_gate_precedes_brief_delivery() {
+  local rec out status
+  rec=$(make_spawn_case not-ready)
+  read_agy_spawn_record "$rec"
+  status=0
+  out=$(FM_FAKE_AGY_READY=no run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$ID") || status=$?
+  [ "$status" -ne 0 ] || fail "agy spawn without a ready signal should fail"
+  assert_contains "$out" "agy did not show a verified ready signal" \
+    "agy readiness failure lacked a loud diagnostic"
+  [ ! -s "$CASE_DIR/pointer.log" ] || fail "agy brief content was sent before readiness was confirmed"
+  assert_grep 'failed: agy did not show a verified ready signal' "$HOME_DIR/state/$ID.status" \
+    "unconfirmed agy readiness did not leave a supervisor-visible failure"
+  pass "fm-spawn: agy never sends the brief before an observable ready signal (trust dialog or idle composer)"
+}
+
+test_agy_unconfirmed_delivery_fails_loudly() {
+  local rec out status
+  rec=$(make_spawn_case drop)
+  read_agy_spawn_record "$rec"
+  status=0
+  out=$(FM_FAKE_AGY_DELIVERY=no run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$ID") || status=$?
+  [ "$status" -ne 0 ] || fail "an unconfirmed agy delivery should fail"
+  assert_contains "$out" "agy brief delivery was not confirmed" \
+    "unconfirmed agy delivery lacked a loud diagnostic"
+  assert_grep 'failed: agy brief delivery was not confirmed' "$HOME_DIR/state/$ID.status" \
+    "unconfirmed agy delivery did not leave a supervisor-visible failure"
+  pass "fm-spawn: agy treats a silent submit failure as a failed spawn, not a hang"
+}
+
+test_agy_model_and_effort_reach_launch_command() {
+  local rec launch
+  rec=$(make_spawn_case model-effort)
+  read_agy_spawn_record "$rec"
+  run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$ID" \
+    --model 'Gemini 3.6 Flash (High)' --effort high >/dev/null
+  launch=$(cat "$CASE_DIR/launch.log")
+  assert_contains "$launch" "--model 'Gemini 3.6 Flash (High)'" "agy launch did not carry the exact model string"
+  assert_contains "$launch" "--effort 'high'" "agy launch did not carry the requested effort flag"
+  assert_not_contains "$launch" '__MODELFLAG__' "agy launch left a MODELFLAG placeholder unresolved"
+  assert_not_contains "$launch" '__EFFORTFLAG__' "agy launch left an EFFORTFLAG placeholder unresolved"
+  pass "fm-spawn: agy launch carries the exact requested model string and effort flag"
 }
 
 # ---- existing launch templates byte-pinned test ---------------------------
@@ -542,9 +761,12 @@ test_existing_launch_templates_stay_byte_pinned() {
 test_tracked_files_have_no_user_absolute_paths() {
   local pattern matches
   pattern="/""Users/"
-  matches=$(git -C "$ROOT" grep -n -F "$pattern" -- . 2>/dev/null || true)
-  [ -z "$matches" ] || fail "tracked files contain user-specific absolute paths: $matches"
-  pass "repository: tracked files contain no user-specific absolute paths"
+  # Maintainer-verification records intentionally preserve exact empirical
+  # command output, including machine-local paths. Runtime code and ordinary
+  # tracked prose must remain portable.
+  matches=$(git -C "$ROOT" grep -n -F "$pattern" -- . ':(exclude)docs/verification/**' 2>/dev/null || true)
+  [ -z "$matches" ] || fail "runtime or ordinary tracked files contain user-specific absolute paths: $matches"
+  pass "repository: runtime and ordinary tracked files contain no user-specific absolute paths"
 }
 
 # ---- main ----------------------------------------------------------------
@@ -573,10 +795,17 @@ test_agy_result_success_rejects_error
 test_agy_cleanup_removes_result_dir
 test_agy_busy_regex_matches_expected_patterns
 test_agy_busy_regex_does_not_leak_to_other_harnesses
+test_agy_busy_state_uses_new_lifecycle_owner
 test_agy_launch_template_is_in_spawn
+test_agy_launch_template_has_no_print_mode_flags
 test_agy_model_effort_in_spawn
 test_agy_harness_detection_records_agy
 test_agy_spawn_succeeds
 test_agy_spawn_records_meta
+test_agy_accepts_trust_dialog_before_brief_delivery
+test_agy_multiline_brief_uses_backslash_continuation
+test_agy_readiness_gate_precedes_brief_delivery
+test_agy_unconfirmed_delivery_fails_loudly
+test_agy_model_and_effort_reach_launch_command
 test_existing_launch_templates_stay_byte_pinned
 test_tracked_files_have_no_user_absolute_paths

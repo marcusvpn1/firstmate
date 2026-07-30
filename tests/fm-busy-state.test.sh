@@ -5,8 +5,8 @@
 # Covers the captain-approved redesign invariants: busy/idle/unknown/dead with
 # explicit source attribution; missing, malformed, stale (gen-mismatch), and
 # untrusted (source-mismatch) semantic data classify unknown - never idle;
-# adapter isolation (one adapter's writer or Grok's regex can never classify
-# another adapter); endpoint death is the only process-level override and
+# adapter isolation (one adapter's writer or a rendered fallback can never
+# classify another adapter); endpoint death is the only process-level override and
 # yields dead, never busy; converted adapters never classify from rendered
 # footer text. All hermetic over temp dirs; no real agent session is invoked.
 set -u
@@ -246,6 +246,26 @@ Ctrl+c:cancel')
   pass "the grok fallback is regex-scoped to grok and classifies only grok tasks"
 }
 
+test_agy_pane_fallback_isolated_and_explicit() {
+  local state out
+  state=$(new_state_dir agy-arm)
+  out=$(fm_busy_classify tmux w1 agy t1 "$state" '⣷  Generating...
+esc to cancel')
+  [ "$out" = "busy agy-pane" ] || fail "agy busy pane must classify 'busy agy-pane', got '$out'"
+  out=$(fm_busy_classify tmux w1 agy t1 "$state" '? for shortcuts                       Gemini 3.6 Flash · high')
+  [ "$out" = "idle agy-pane" ] || fail "agy explicit idle footer must classify 'idle agy-pane', got '$out'"
+  out=$(fm_busy_classify tmux w1 agy t1 "$state" 'ordinary output
+> ')
+  [ "$out" = "unknown agy-inconclusive" ] \
+    || fail "agy without an explicit busy or idle signature must stay unknown, got '$out'"
+  out=$(fm_busy_classify tmux w1 agy t1 "$state" 'Ctrl+c:cancel')
+  [ "$out" = "unknown agy-inconclusive" ] \
+    || fail "grok's footer must not classify an agy task, got '$out'"
+  out=$(fm_busy_classify tmux w1 grok t1 "$state" 'Generating...')
+  [ "$out" = "idle grok-regex" ] || fail "agy's footer must not classify a grok task, got '$out'"
+  pass "the agy fallback requires explicit AGY pane signatures and cannot leak across adapters"
+}
+
 # --- kimi verification gate -----------------------------------------------------
 
 test_codex_unverified_gate() {
@@ -370,6 +390,7 @@ test_record_without_sidecar_unknown
 test_source_mismatch_cross_adapter
 test_converted_adapters_ignore_footer_text
 test_grok_regex_isolated
+test_agy_pane_fallback_isolated_and_explicit
 test_codex_unverified_gate
 test_kimi_unverified_gate
 test_dead_endpoint_overrides
