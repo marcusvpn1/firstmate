@@ -452,10 +452,10 @@ fm_backend_validate_task_endpoint() {  # <meta-file> <task-id>
       fi
       ;;
     herdr)
-      [ "$binding" = "$id" ] || {
-        echo "REFUSED: legacy Herdr endpoint metadata for task $id lacks an exact task binding; preserving task state." >&2
+      if [ -n "$binding" ] && [ "$binding" != "$id" ]; then
+        echo "REFUSED: Herdr endpoint metadata is bound to task $binding, not $id; preserving task state." >&2
         return 1
-      }
+      fi
       recorded_session=$(fm_backend_meta_exact_value "$meta" herdr_session) || recorded_session=
       workspace=$(fm_backend_meta_exact_value "$meta" herdr_workspace_id) || workspace=
       tab=$(fm_backend_meta_exact_value "$meta" herdr_tab_id) || tab=
@@ -471,10 +471,10 @@ fm_backend_validate_task_endpoint() {  # <meta-file> <task-id>
       fi
       ;;
     zellij)
-      [ "$binding" = "$id" ] || {
-        echo "REFUSED: legacy Zellij endpoint metadata for task $id lacks an exact task binding; preserving task state." >&2
+      if [ -n "$binding" ] && [ "$binding" != "$id" ]; then
+        echo "REFUSED: Zellij endpoint metadata is bound to task $binding, not $id; preserving task state." >&2
         return 1
-      }
+      fi
       recorded_session=$(fm_backend_meta_exact_value "$meta" zellij_session) || recorded_session=
       tab=$(fm_backend_meta_exact_value "$meta" zellij_tab_id) || tab=
       pane=$(fm_backend_meta_exact_value "$meta" zellij_pane_id) || pane=
@@ -487,10 +487,10 @@ fm_backend_validate_task_endpoint() {  # <meta-file> <task-id>
       fi
       ;;
     orca)
-      [ "$binding" = "$id" ] || {
-        echo "REFUSED: legacy Orca endpoint metadata for task $id lacks an exact task binding; preserving task state." >&2
+      if [ -n "$binding" ] && [ "$binding" != "$id" ]; then
+        echo "REFUSED: Orca endpoint metadata is bound to task $binding, not $id; preserving task state." >&2
         return 1
-      }
+      fi
       terminal=$(fm_backend_meta_exact_value "$meta" terminal) || terminal=
       worktree_id=$(fm_backend_meta_exact_value "$meta" orca_worktree_id) || worktree_id=
       [ -n "$terminal" ] || {
@@ -510,10 +510,10 @@ fm_backend_validate_task_endpoint() {  # <meta-file> <task-id>
       window=$terminal
       ;;
     cmux)
-      [ "$binding" = "$id" ] || {
-        echo "REFUSED: legacy cmux endpoint metadata for task $id lacks an exact task binding; preserving task state." >&2
+      if [ -n "$binding" ] && [ "$binding" != "$id" ]; then
+        echo "REFUSED: cmux endpoint metadata is bound to task $binding, not $id; preserving task state." >&2
         return 1
-      }
+      fi
       workspace=$(fm_backend_meta_exact_value "$meta" cmux_workspace_id) || workspace=
       surface=$(fm_backend_meta_exact_value "$meta" cmux_surface_id) || surface=
       if [ -z "$workspace" ] || [ -z "$surface" ] || [ "$window" != "$workspace:$surface" ] \
