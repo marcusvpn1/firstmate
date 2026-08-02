@@ -403,7 +403,7 @@ The guarded turn-end signal remains a wake notification; standalone Kimi has no 
 
 ## agy (VERIFIED 2026-07-29, Antigravity CLI 1.1.8, Gemini 3.6 Flash)
 
-AGY is EXPERIMENTAL: single-worker only, no secondmate support, and no verified turn-end hook (busy/idle pane detection is the only completion signal).
+AGY is EXPERIMENTAL: no secondmate support, and no verified turn-end hook (busy/idle pane detection is the only completion signal).
 It launches bare into a real interactive TUI, the same shape as claude/codex/opencode/pi/grok/kimi, not a one-shot print mode.
 `bin/fm-busy-lib.sh` owns AGY task-state classification under the new lifecycle contract: its AGY-only fallback returns busy or idle only when the corresponding explicit pane signature below is present, and returns unknown for every inconclusive capture.
 `bin/fm-tmux-lib.sh` reuses the same busy signature for delivery and supervisor-input guards, but does not independently classify recorded AGY task state.
