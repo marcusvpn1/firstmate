@@ -46,8 +46,14 @@
 # tmux adapter does not paper over a herdr-specific shape.
 #
 # Overrides: FM_COMPOSER_IDLE_RE matches an empty composer after ghost and
-# structural border stripping. FM_BUSY_REGEX globally overrides harness-scoped
-# busy-footer matching (mirrors fm-watch.sh / the daemon).
+# structural border stripping. FM_BUSY_REGEX overrides the rendered busy-footer
+# matching used here.
+#
+# NOT a task-state source: task busy state is owned by bin/fm-busy-lib.sh's
+# semantic contract. The matching below serves only delivery guards: the submit
+# acknowledgement and the away-mode supervisor-pane busy guard. Both ask about
+# the pane receiving input, not the state of a recorded worker task. Matching
+# stays harness-scoped so one harness's output cannot make another read busy.
 #
 # All functions are `set -u` and `set -e` safe (guarded tmux calls, explicit
 # returns) so they can be sourced into either context.
@@ -59,8 +65,10 @@
 
 # shellcheck source=bin/fm-composer-lib.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/fm-composer-lib.sh"
+# shellcheck source=bin/fm-busy-lib.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/fm-busy-lib.sh"
 
-# Busy footers per harness (mirror fm-watch.sh). claude/codex: "esc to
+# Delivery-only rendered busy footers per harness. claude/codex: "esc to
 # interrupt"; opencode: "esc interrupt"; pi: "Working..."; grok: "Ctrl+c:cancel".
 # Claude's current spinner has a rotating glyph and word, but every active-turn
 # line has an ellipsis followed by a parenthesized elapsed duration. Keep this
@@ -76,6 +84,12 @@
 # busy signals on their own.
 # The full moon-phase set remains locale- and emoji-font-sensitive because Kimi
 # exposes no stable ASCII busy token.
+# AGY (Antigravity CLI, VERIFIED 2026-07-29 on agy 1.1.8): a busy turn shows a
+# spinner glyph plus "Generating..." above the composer, and the footer bar
+# shows "esc to cancel"; idle shows only "? for shortcuts" with neither. Both
+# tokens were captured live and are distinct from every other harness's busy
+# text ("esc to cancel" vs codex/claude's "esc to interrupt", grok's exact
+# "Ctrl+c:cancel").
 FM_TMUX_BUSY_REGEX_DEFAULT='esc (to )?interrupt|Working\.\.\.|Ctrl\+c:cancel'
 FM_TMUX_CLAUDE_BUSY_REGEX_DEFAULT='esc to interrupt|…[[:space:]]+\([0-9]+[smh]'
 FM_TMUX_CODEX_BUSY_REGEX_DEFAULT='esc to interrupt'
@@ -83,7 +97,6 @@ FM_TMUX_OPENCODE_BUSY_REGEX_DEFAULT='esc interrupt'
 FM_TMUX_PI_BUSY_REGEX_DEFAULT='Working\.\.\.'
 FM_TMUX_GROK_BUSY_REGEX_DEFAULT='Ctrl\+c:cancel'
 FM_TMUX_KIMI_BUSY_REGEX_DEFAULT='^[[:space:]]*(🌑|🌒|🌓|🌔|🌕|🌖|🌗|🌘)[[:space:]]+·[[:space:]]+'
-FM_TMUX_AGY_BUSY_REGEX_DEFAULT='(Thinking|Working|Analyzing|Executing|Processing)\.\.\.|(Task|Step|Turn) [0-9]+/[0-9]+'
 
 fm_busy_lines_match() {  # [harness]
   local harness=${1:-} lines regex
@@ -98,7 +111,7 @@ fm_busy_lines_match() {  # [harness]
       pi|pi-signed) regex=$FM_TMUX_PI_BUSY_REGEX_DEFAULT ;;
       grok) regex=$FM_TMUX_GROK_BUSY_REGEX_DEFAULT ;;
       kimi) regex=$FM_TMUX_KIMI_BUSY_REGEX_DEFAULT ;;
-      agy) regex=$FM_TMUX_AGY_BUSY_REGEX_DEFAULT ;;
+      agy) regex=$FM_BUSY_AGY_BUSY_REGEX_DEFAULT ;;
       '') regex=$FM_TMUX_BUSY_REGEX_DEFAULT ;;
       *)
         # A supplied harness must never borrow another harness's signature.

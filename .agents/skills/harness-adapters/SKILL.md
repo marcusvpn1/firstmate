@@ -1,6 +1,6 @@
 ---
 name: harness-adapters
-description: Agent-only reference for firstmate harness operations. Use before spawning or recovering a crewmate or secondmate, handling a trust dialog, sending a harness-specific skill invocation, interrupting or exiting an agent, resuming an exited agent, or verifying a new harness adapter. Contains verified facts for claude, codex, opencode, pi, pi-signed, grok, and kimi.
+description: Agent-only reference for firstmate harness operations. Use before spawning or recovering a crewmate or secondmate, handling a trust dialog, sending a harness-specific skill invocation, interrupting or exiting an agent, resuming an exited agent, or verifying a new harness adapter. Contains verified facts for claude, codex, opencode, pi, pi-signed, grok, kimi, and agy.
 user-invocable: false
 metadata:
   internal: true
@@ -12,7 +12,7 @@ Use this reference before any harness-specific firstmate operation: spawn, recov
 
 Crewmates default to the same harness firstmate is running on unless `config/crew-harness` records an adapter name.
 Optional dispatch profiles in `config/crew-dispatch.json` can override that static default for one crewmate or scout dispatch by selecting concrete harness, model, and effort axes at intake.
-When a matched rule or default is a profile array, load `quota-array-dispatch` for the pace-aware candidate choice after this skill establishes harness and model/provider facts.
+When a matched rule or default is a profile array, load `quota-array-dispatch` for the completion-aware candidate choice after this skill establishes harness and model/provider facts.
 The captain may override that file at session start or later; a per-task instruction such as "run this one on codex" overrides it for that dispatch only.
 `default` means mirror firstmate's own harness.
 
@@ -29,12 +29,13 @@ Each adapter splits into mechanics and knowledge.
 The per-task mechanics, including launch command, autonomy flag, and any enabled crewmate turn-end hook, live in `bin/fm-spawn.sh`.
 The primary-session "no turn ends blind" guard contract and harness hook installation paths live in `docs/turnend-guard.md`.
 The primary-session watcher wake protocols are rendered from `docs/supervision-protocols/` by `bin/fm-supervision-instructions.sh`.
-The supervision knowledge lives here: busy signature, exit command, interrupt, dialogs, resume behavior, skill invocation, and quirks.
+The supervision knowledge lives here: busy state, exit command, interrupt, dialogs, resume behavior, skill invocation, and quirks.
+Each adapter's `Busy state` row names only which semantic source that harness uses; `bin/fm-busy-lib.sh` owns the contract itself, including verdicts, source attribution, and the verification gates that keep an unverified harness at unknown.
 
 Never dispatch a crewmate or secondmate on an unverified adapter.
 If `config/crew-harness` or `config/secondmate-harness` names an unverified adapter, tell the captain under `AGENTS.md` section 9 that the requested worker runtime is not verified yet, use firstmate's own verified runtime for current work, and ask only whether to verify the requested runtime before future use.
 Do not pause current work for that future-verification choice, and never launch an unverified adapter.
-If the captain asks for a new harness, propose verifying it first: spawn a trivial supervised task using `fm-spawn`'s raw-launch-command escape hatch, confirm every fact empirically, then record the mechanics in `fm-spawn`, the busy signature in `fm-watch.sh` and `fm-tmux-lib.sh` defaults, any needed `FM_COMPOSER_IDLE_RE` empty-composer override plus any novel bare agent prompt glyph in `bin/fm-composer-lib.sh`'s shared composer classifier (the one fleet-wide owner of the empty/dead-shell/pending decision, so a new harness's own idle composer is not misread as a dead shell), the tmux agent-process liveness classification in `bin/backends/tmux.sh` when the harness can launch a secondmate, and the verified knowledge here.
+If the captain asks for a new harness, propose verifying it first: spawn a trivial supervised task using `fm-spawn`'s raw-launch-command escape hatch, confirm every fact empirically, then record the mechanics in `fm-spawn`, its semantic busy source and trust gate in `bin/fm-busy-lib.sh`, any needed `FM_COMPOSER_IDLE_RE` empty-composer override plus any novel bare agent prompt glyph in `bin/fm-composer-lib.sh`'s shared composer classifier (the one fleet-wide owner of the empty/dead-shell/pending decision, so a new harness's own idle composer is not misread as a dead shell), the tmux agent-process liveness classification in `bin/backends/tmux.sh` when the harness can launch a secondmate, and the verified knowledge here.
 
 ## Detection
 
@@ -54,7 +55,8 @@ Use that value for interrupt, exit, resume, and skill-invocation facts.
 
 The primary integrations for `claude`, `codex`, `opencode`, `pi`, `pi-signed`, and `grok` have empirically validated hook paths for the "no turn ends blind" guard.
 `claude` and `codex` block directly through Stop hooks that preserve exit status 2 and stderr from `bin/fm-turnend-guard.sh`.
-`opencode`, `pi`, `pi-signed`, and `grok` expose passive lifecycle callbacks for this purpose, so their tracked primary adapters force one bounded follow-up or resume when the shared predicate blocks.
+`opencode`, `pi`, and `pi-signed` expose passive lifecycle callbacks and force one bounded follow-up when the shared predicate blocks.
+Grok selects native blocking or its pre-native bounded resume fallback from the exact running Stop payload; [`docs/turnend-guard.md`](../../../docs/turnend-guard.md) owns that contract.
 Kimi is outside the primary turn-end guard scope, while `docs/turnend-guard.md` owns its separate guarded global hook for crew wake signals.
 The exact hook files, commands, scoping rules, and fail-open tradeoffs are owned by `docs/turnend-guard.md`.
 `docs/verification/supervision.md` "Turn-end guard" owns active validation evidence.
@@ -125,6 +127,10 @@ The supported launch-profile flags below are verified locally; each row records 
 | pi / pi-signed | `--model <model>` | `--thinking <low\|medium\|high\|xhigh\|max>` | Verified 2026-07-27 on Pi and pi-signed 0.82.0. Both expose the same accepted thinking levels and completed the same model-qualified max-thinking smoke. |
 | opencode | `--model <provider/model>` | none for firstmate's interactive launch | Verified on opencode 1.17.6. `opencode run` has `--variant`, but firstmate launches the interactive `opencode --prompt` path, which has no verified effort flag. |
 | kimi | `--model <model>` | none | Verified 2026-07-25 on Kimi Code CLI 0.29.1. |
+| agy | `--model <model>` | `--effort <low\|medium\|high>` | Verified 2026-07-29 on Antigravity CLI 1.1.8. `xhigh`/`max` are not accepted and are omitted. An unrecognized model, or a model paired with a conflicting `--effort`, is a silent same-launch fallback to the default model (a `⚠ Warning`, not a failed spawn) - see the agy section below. |
+
+The concrete `harness` field owns adapter identity independently of the model provider: `harness=pi` with `model=xai/grok-*` is Pi using xAI, not `harness=grok`, and does not require Grok CLI login; `harness=grok` remains the standalone Grok Build CLI adapter.
+No script resolves that split for you: establish which credential store a tuple reads from the discovery surfaces below plus `quota-axi auth --json`'s per-provider sources, and show that reasoning rather than inferring it from a harness, model, or source name.
 
 ### Model support discovery
 
@@ -139,9 +145,11 @@ Use the discovery surface in the current authenticated environment because suppo
 | pi / pi-signed | Run the selected executable as `<executable> --list-models [search]`; Pi's installed `docs/models.md` owns how built-in, extension-registered, and custom provider/model entries reach that list. |
 | grok | Run `grok models`, which lists the models available to the current Grok installation and account. |
 | kimi | Run `kimi provider list --json`, which lists the current provider and model configuration. |
+| agy | Run `agy models`, which lists lowercase-hyphenated aliases (e.g. `gemini-3.6-flash-medium`); the exact title-case display string shown at startup (e.g. `Gemini 3.6 Flash (Medium)`) is also accepted. |
 
 For an unfamiliar harness or model namespace, establish support and provider identity from that harness's authoritative CLI help, model listing, or current documentation rather than guessing from a name or prefix.
-If those sources do not establish the relationship needed for dispatch, fail loudly and report the unresolved candidate.
+A listing that reaches the account and does not contain the model is concrete evidence the model is unsupported: block that candidate and quote the result.
+A discovery surface you could not reach establishes nothing; report that as uncertainty rather than turning it into a supported or unsupported verdict.
 
 When a requested effort value is outside the harness-specific accepted set, `fm-spawn` records the requested `effort=` in meta but emits no effort flag for that harness.
 This preserves launch success instead of passing a known-bad value.
@@ -157,6 +165,7 @@ Natural language is acceptable if uncertain.
 - pi and pi-signed: no separate verified skill invocation beyond normal command behavior; use natural language if the exact skill command is uncertain.
 - grok: `/<skill>`, for example `/no-mistakes` (same form as claude). Verified end to end: grok discovers the user-level `no-mistakes` skill, `/no-mistakes` invokes it, and grok drives a real `no-mistakes axi run`. Like codex's `$`/`/` popups, typing `/<skill>` opens grok's slash-autocomplete, so a too-fast Enter selects the popup entry instead of sending, and for an argument-taking command (like `/no-mistakes`'s optional task-first argument) that first Enter only expands the popup selection into an argument-hint placeholder rather than submitting - a genuine second Enter is required (see the grok section below for the 2026-07-03 incident and fix). `fm_tmux_submit_core`'s retried Enter (used by `fm-send` on the tmux backend) handles this through the structural composer reader; the herdr backend needed a dedicated fix (`fm_backend_herdr_composer_state`, docs/herdr-backend.md) because its prior delta-based verification false-positived on that same popup-close content change.
 - kimi: `/<skill>`, for example `/no-mistakes`.
+- agy: does not recognize `/no-mistakes` as a slash command (prints "Unknown command"); use natural language to invoke no-mistakes instead.
 
 ## Submission acknowledgement hazards
 
@@ -164,11 +173,11 @@ A send or key action reporting success is not proof that the intended action hap
 OpenCode can accept and queue an Enter while leaving text visible, Grok can consume Enter in its slash popup without submitting, and Kimi can silently drop a message sent before readiness even though the send returns success.
 The shared symptom is a healthy-looking pane with no work in progress, so each adapter must verify the observable postcondition that is specific to its TUI.
 
-## claude (VERIFIED; busy signature re-verified 2026-07-25 on Claude Code 2.1.220)
+## claude (VERIFIED; busy-state hooks live-verified 2026-07-28 on Claude Code 2.1.220)
 
 | Fact | Value |
 |---|---|
-| Busy-pane signature | Current turns match the harness-scoped `…[[:space:]]+\([0-9]+[smh]` shape after a rotating glyph and word, for example `✢ Pollinating… (16s · ...)`; legacy `esc to interrupt` remains accepted, while `Worked for 31s` is idle. |
+| Busy state | Owned lifecycle hooks: `UserPromptSubmit` opens a turn, `Stop`, `StopFailure`, and `SessionEnd` close it. Claude fires no hook for a manual interrupt, so a firstmate-initiated interrupt must record the clear itself. |
 | Exit command | `/exit` |
 | Interrupt | single Escape |
 | Skill invocation | `/<skill>` (e.g. `/no-mistakes`) |
@@ -198,7 +207,7 @@ Claude Code's primary watcher protocol is Stop-owned: the auto-arm hook fires on
 
 | Fact | Value |
 |---|---|
-| Busy-pane signature | `esc to interrupt` (shown as `• Working (Xs • esc to interrupt)`) |
+| Busy state | Unknown until a semantic source is live-verified: the app-server turn lifecycle is unreachable for a pane worker, and project lifecycle hooks did not fire for a firstmate-launched worker. |
 | Exit command | `/quit` (slash popup needs about 1 second between text and Enter; `fm-send` handles it) |
 | Interrupt | single Escape |
 | Skill invocation | `$<skill>` (e.g. `$no-mistakes`); `/<skill>` is claude-only and codex rejects it as "Unrecognized command" |
@@ -229,7 +238,7 @@ The checkpoint is deliberately foreground and bounded so Codex regains control r
 
 | Fact | Value |
 |---|---|
-| Busy-pane signature | `esc interrupt` (dotted spinner footer; note no "to") |
+| Busy state | The Firstmate-owned plugin's semantic `session.status`: `busy` and `retry` are active, `idle` is inactive, latched to the worker's own session. |
 | Exit command | `/exit` |
 | Interrupt | double Escape; known flaky while a long shell command runs, so a wedged pane may need `/exit` and relaunch |
 
@@ -266,7 +275,7 @@ The follow-up was verified in the interactive TUI; `opencode run` can exit befor
 
 | Fact | Value |
 |---|---|
-| Busy-pane signature | `Working...` (braille spinner prefix; no `esc to interrupt` text) |
+| Busy state | The Firstmate-owned extension's `agent_start` (busy) and `agent_settled` confirmed by `ctx.isIdle()` (idle), which covers retries, compaction, tool loops, and queued continuations. |
 | Exit command | `/quit` |
 | Interrupt | single Escape |
 
@@ -303,7 +312,7 @@ For Grok's supported reasoning-effort values and omission behavior, see the [lau
 
 | Fact | Value |
 |---|---|
-| Busy-pane signature | `Ctrl+c:cancel` (the mid-turn cancel hint in grok's keybind bar, shown iff a turn is running; the spinner line is a braille glyph + `<status>… N.Ns` + `[stop]`, e.g. `⠹ Thinking… 1.1s … [stop]`). Idle keybind bar shows only `Shift+Tab:mode │ Ctrl+.:shortcuts`. The ASCII `Ctrl+c:cancel` is the busy regex (avoids locale fragility of matching braille). |
+| Busy state | Upstream's rendered-tail fallback, isolated to Grok until its structured lifecycle is live-verified: `Ctrl+c:cancel`, the mid-turn cancel hint shown in grok's keybind bar iff a turn is running. The idle bar shows only `Shift+Tab:mode │ Ctrl+.:shortcuts`. ASCII is matched rather than the braille spinner to avoid locale fragility. |
 | Exit command | `/exit` typed into the composer exits the TUI cleanly and prints `Resume this session with: grok --resume <session-id>`; `Ctrl+Q` double-press within 1000ms remains a fallback; `Ctrl+D` is the quit key in VS Code family terminals; `Ctrl+C` is the interrupt, not the exit. |
 | Interrupt | single `Ctrl+C` (cancels the current turn; the footer shows `Ctrl+c:cancel` mid-turn). `Esc` only moves focus to the scrollback, it does NOT interrupt. |
 | Skill invocation | `/<skill>` (e.g. `/no-mistakes`), same as claude. Opens a slash-autocomplete popup, so a too-fast Enter selects the popup entry instead of sending. For an argument-taking command that first Enter does not submit at all - it expands the selection into an argument-hint placeholder in the composer (e.g. `/compact` -> `/compact compaction instructions`, live-verified), leaving real text still sitting there unsubmitted; a genuine second Enter is required. `fm-send`'s retried Enter lands it on BOTH backends, but only because each backend's own submit-verification correctly recognizes that placeholder-filled text as still-pending - see the incident below. |
@@ -343,13 +352,13 @@ This keeps the hook outside the worktree, needs no trust grant, and writes only 
 `fm-teardown` removes the worktree pointer before returning a pooled worktree.
 Secondmate spawns skip the pointer (idle panes are healthy, no stale-pane detection for them).
 
-**Primary-session guard fact (verified 2026-07-08, Grok 0.2.91).**
+**Primary-session guard fact (verified 2026-07-28, Grok 0.2.112 and 0.2.73).**
 The firstmate PRIMARY's own `.grok/hooks/fm-primary-turnend-guard.json` invokes `bin/fm-turnend-guard-grok.sh`.
-Grok Stop hooks are passive for this purpose: exit 2 does not make the model continue.
-The adapter therefore runs the shared predicate and, when it returns 2, forces one same-session follow-up with `grok --resume <sessionId> -p <guard-reason>` while setting `GROK_TURNEND_GUARD_ACTIVE=1` so the nested Stop hook does not recurse.
-It does not pass `--permission-mode`, so the passive hook cannot escalate the primary session's tool permissions.
+Grok 0.2.112 exposes native same-process Stop continuation in its running payload, while the genuine pre-native 0.2.73 payload omits that capability and still needs one guarded `grok --resume`.
+The exact adaptive and malformed-input contract is owned by `docs/turnend-guard.md`.
+The tracked Claude Stop hooks skip themselves under `GROK_AGENT`, because Grok also loads Claude-compatible project settings and otherwise creates a second blocking path.
 Project-local Grok hooks require folder trust, verified with launch-time `--trust`; if the primary firstmate checkout is not trusted for Grok hooks, this primary guard fails open and `fm-guard.sh` remains the next-command alarm.
-Grok's primary watcher protocol is Claude-shaped background-notify around `bin/fm-watch-arm.sh`; the passive Stop hook is only a backstop for blind turn ends.
+Grok's primary watcher protocol remains background-notify around `bin/fm-watch-arm.sh`; native Stop continuation does not provide Pi-like extension ownership.
 
 ## kimi (VERIFIED 2026-07-25, kimi 0.29.1)
 
@@ -360,7 +369,7 @@ Kimi Code CLI launches from the absolute path resolved from `PATH`, falling back
 | Binary | Executable `kimi` from `PATH`, then executable `$HOME/.kimi-code/bin/kimi`; spawning refuses if neither exists. |
 | Launch | Bare interactive TUI with `--auto`, followed by readiness-gated pointer delivery; positional prompts are rejected. |
 | Models | `kimi-code/kimi-for-coding` (default), `kimi-code/kimi-for-coding-highspeed`, `kimi-code/k3`, and `kimi-code/k3-256k`. |
-| Busy-pane signature | A transient line with optional leading whitespace, a rotating moon-phase glyph, required whitespace on both sides of `·`, and optional trailing content; the line is absent when idle. |
+| Busy state | Standalone Kimi is unknown until a semantic source is live-verified; prefer Wire's `prompt` request lifetime, then documented hooks including `Interrupt`. Kimi behind Pi uses Pi's lifecycle. Its moon-phase spinner is not a state source. |
 | Exit command | `/exit` |
 | Interrupt | Single Escape, which prints `Interrupted by user`. |
 | Skill invocation | `/<skill>`, for example `/no-mistakes`; firstmate skills are discovered. |
@@ -382,12 +391,51 @@ The startup input-readiness window is the established cause of Kimi's first-Ente
 An early Enter can expand Kimi's composer to multiple content rows, leaving the pointer text on the first row and the cursor on an empty later row, which is the same single-cursor-row reading defect exposed by Grok's bottom-border cursor quirk.
 The shared tmux reader now locates the complete bordered composer and treats real text on any content row as positive evidence that submission is still pending.
 No rendering signal is trustworthy for proving that Kimi will accept input during this window, so delivery retries Enter through the shared submit core and retains the existing postcondition verification rather than relaxing readiness or delivery checks.
-Kimi's footer tip rotates independently and can display `ctrl+c: cancel` while completely idle, so tip text is never used as its busy signature without the leading moon-plus-middot spinner structure.
+Kimi's footer tip rotates independently and can display `ctrl+c: cancel` while completely idle, which is one reason no Kimi rendered signature is a state source.
 The idle status bar can contain lowercase `thinking`, which is the model's effort label rather than a busy signal.
-The spinner match covers the full moon-phase glyph set rather than one frame, but it remains locale- and emoji-font-sensitive because Kimi exposes no stable ASCII busy token.
+The delivery-only spinner match covers the full moon-phase glyph set rather than one frame, but it remains locale- and emoji-font-sensitive because Kimi exposes no stable ASCII busy token.
 
 [`docs/turnend-guard.md`](../../../docs/turnend-guard.md) owns Kimi's verified global hook surface and captain-approved crew wake integration.
 `fm-spawn.sh` installs one marker-delimited Firstmate entry in `$HOME/.kimi-code/config.toml`, one silent always-zero hook script, and one private token registry under `$HOME/.kimi-code/fm-turn-end.d/`.
 Each Kimi crew worktree receives a gitignored `.fm-kimi-turnend` token pointer, and the global hook touches that task's `state/<id>.turn-ended` only when the Stop payload's `cwd`, pointer, and registry entry all agree.
 A guarded silent hook cannot be verified from absence of effect, so prove invocation with an unguarded probe before concluding that the hook did not fire.
-The guarded turn-end signal supplements the pane busy signature, whose locale- and emoji-font-sensitive limits still apply while a turn is running.
+The guarded turn-end signal remains a wake notification; standalone Kimi has no busy-state source until one is live-verified.
+
+## agy (VERIFIED 2026-07-29, Antigravity CLI 1.1.8, Gemini 3.6 Flash)
+
+AGY is EXPERIMENTAL: single-worker only, no secondmate support, and no verified turn-end hook (busy/idle pane detection is the only completion signal).
+It launches bare into a real interactive TUI, the same shape as claude/codex/opencode/pi/grok/kimi, not a one-shot print mode.
+`bin/fm-busy-lib.sh` owns AGY task-state classification under the new lifecycle contract: its AGY-only fallback returns busy or idle only when the corresponding explicit pane signature below is present, and returns unknown for every inconclusive capture.
+`bin/fm-tmux-lib.sh` reuses the same busy signature for delivery and supervisor-input guards, but does not independently classify recorded AGY task state.
+
+| Fact | Value |
+|---|---|
+| Launch | Bare `agy --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__`, no positional prompt and no `-p`/`--output-format json`. |
+| Busy-pane signature | Spinner glyph + `Generating...` above the composer; footer shows `esc to cancel`. |
+| Idle-pane signature | Footer shows only `? for shortcuts`, with neither busy token present. |
+| Exit command | `/exit` opens a slash-autocomplete popup (the same hazard as codex/grok's `/` popup) - the first Enter only selects the popup entry, a genuine second Enter is required to actually submit and exit. Prints a resume hint on exit: `agy --conversation=<uuid>`. |
+| Interrupt | single Escape (observed live: cancels the running turn and returns to the idle composer). |
+| Model/effort | `--model <name>` (either `agy models`'s own alias or the exact title-case display string, see below); `--effort low|medium|high` as of 1.1.8, with `xhigh`/`max` omitted rather than guessed. |
+
+**Why print mode was replaced.** `-p`/`--output-format json` runs exactly one turn then exits the process entirely, so it cannot drive a multi-step gated flow like no-mistakes (commit -> open PR -> respond to review/test gates -> reach CI green): nobody is left alive to answer a gate after the first turn completes.
+This was observed live: an agy crewmate using `-p` mode committed its work and opened a PR, then the process exited while no-mistakes was still mid-run, leaving validation stalled with nobody driving it.
+The interactive launch below fixes this the same way every other verified harness already works.
+
+**Trust dialog.** First launch in an untrusted directory shows "Do you trust the contents of this project?" with "Yes, I trust this folder" / "No, exit", the default selection already on the trusting option - accept with a single Enter, the same pattern as claude/codex/grok.
+`fm-spawn.sh` polls for either this dialog or the idle composer; if the dialog is showing it sends one Enter and keeps polling for the idle composer, so a directory that is already trusted (dialog never appears) is not blocked waiting for it.
+
+**Type-then-submit, but embedded newlines submit early.** Text typed into the composer sits there until Enter submits it, the same type-then-submit model as the others - but sending a brief's full multi-line content as one literal keystroke send is NOT safe: each embedded newline is delivered as an ordinary Enter and submits that line as its own separate turn, verified live (a 3-line brief sent as one literal string produced three separate replies instead of one).
+AGY's own shortcuts panel (`?` when the composer is empty) documents a `\` + Enter fallback for inserting a literal newline without submitting (also bindable via `alt+enter`/`ctrl+j`/`shift+enter`, unverified over a plain tmux keystroke send).
+`fm-spawn.sh` sends the brief line by line: every line but the last as `<line>\` followed by a real Enter, and only the final line's Enter actually submits.
+Verified end to end: a 3-line brief sent this way arrived as one combined multi-line prompt and produced one reply, and the session stayed alive afterward to accept a follow-up turn - confirming the fix for the print-mode gap above.
+Delivery is confirmed by the busy signature appearing (or the composer returning to idle, for a reply fast enough that busy is never observed between polls); an unconfirmed delivery is a loud spawn failure, not a silent hang.
+
+**An unrecognized or conflicting `--model` is a SILENT fallback in interactive mode, not a crash.** Verified live on 1.1.8: `agy --model 'nonexistent-model-xyz' --dangerously-skip-permissions` still launches straight into the ordinary composer, printing only a `⚠ Warning` ("model ... is not recognized as a known model or custom model in settings. Using the default model instead.") before continuing on the account's default model.
+The same silent-fallback shape applies to a model name that already encodes an effort suffix (e.g. `gemini-3.6-flash-medium`) combined with an explicit `--effort` on the same launch: verified live, `--model gemini-3.6-flash-medium --effort high` warns `--model gemini-3.6-flash-medium conflicts with --effort=high. Using the default model instead.` and still launches, silently ON THE DEFAULT MODEL rather than the intended one.
+Both are exit-0, TUI-reachable outcomes - `fm-spawn.sh` cannot detect a wrong-model launch from its own launch success, so a dispatch profile that pairs an effort-suffixed model name (e.g. `Gemini 3.6 Flash (Medium)`) with its own separate `effort` field should still omit that field, purely to guarantee the intended model actually launches.
+Either the exact `agy models` alias (lowercase-hyphenated, e.g. `gemini-3.6-flash-medium`, `claude-opus-4-6-thinking`) or the exact title-case display string agy shows at startup (e.g. `Gemini 3.6 Flash (Medium)`) is accepted - both were verified live to resolve to the same model.
+A prior, narrower finding (data/learnings.md, 2026-07-29) described a hand-normalized guess (`claude-sonnet-4.6-(thinking)`, mixing a literal period, hyphens, and parens - not a clean form of either accepted shape) as a hard failure; that specific claim did not reproduce under this task's interactive-mode retest and is superseded by the silent-fallback behavior above, which is the operationally important risk (a crewmate can end up running on the wrong model with no loud signal).
+
+**Worktree-isolation false pwd (separate, unresolved quirk).** AGY's own reported `pwd -P` inside its first tool call has been observed resolving to the PRIMARY checkout even when `fm-spawn.sh`'s meta and the launching shell's own `cd` correctly show the treehouse worktree, recurring across different models.
+A worker's isolation-assertion gate self-blocking (`blocked: launched in primary checkout, not an isolated worktree`) on an agy task should be treated with suspicion of this agy-specific pwd-resolution quirk rather than assumed to prove firstmate's own spawn is broken.
+Not yet root-caused; out of scope for the launch-mode fix above.
