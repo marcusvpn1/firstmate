@@ -584,9 +584,10 @@ case "${1:-}" in
     if [ -n "${FM_FAKE_LAUNCH_LOG:-}" ]; then
       prev=
       for a in "$@"; do
-        if [ "$prev" = "-l" ]; then
+        if [ "$prev" = "-l" ] && [ "$a" != -- ]; then
           printf '%s\n' "$a" >> "$FM_FAKE_LAUNCH_LOG"
         fi
+        [ "$a" = -- ] && continue
         prev=$a
       done
     fi
