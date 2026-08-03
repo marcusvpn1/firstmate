@@ -112,9 +112,12 @@ fm_backend_tmux_send_text_line() {  # <target> <text>
 # fm_backend_tmux_send_literal: send TEXT as literal bytes with no
 # submission - the caller sends Enter separately (fm-spawn.sh's launch-command
 # send pauses between the literal send and Enter for the harness to settle).
-# Mirrors `tmux send-keys -t "$T" -l "<text>"`.
+# Mirrors `tmux send-keys -t "$T" -l -- "<text>"`. The `--` separator stops
+# tmux from parsing a leading-dash TEXT (e.g. a markdown "- " brief line sent
+# by agy_send_brief) as a flag, which otherwise aborts with
+# "command send-keys: invalid flag -" (verified tmux 3.7b).
 fm_backend_tmux_send_literal() {  # <target> <text>
-  tmux send-keys -t "$1" -l "$2"
+  tmux send-keys -t "$1" -l -- "$2"
 }
 
 # fm_backend_tmux_kill: remove one explicitly named task window, best-effort.
