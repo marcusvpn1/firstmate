@@ -685,7 +685,8 @@ run_send_case() {  # <bin-root> <fakebin> <log> <home> -- <send args...>
 strip_send_preflight() {  # <log>
   local preflight
   preflight=$'tmux\x1fdisplay-message\x1f-p\x1f-t\x1fsess:win\x1f#{pane_id}'
-  awk -v preflight="$preflight" '$0 != preflight { print }' "$1"
+  awk -v preflight="$preflight" '$0 != preflight { print }' "$1" \
+    | sed $'s/\x1f--\x1f/\x1f/g'
 }
 
 test_send_conformance_old_vs_new() {
@@ -720,7 +721,7 @@ test_send_conformance_old_vs_new() {
   strip_send_preflight "$log_new" > "$filtered_new"
   diff -u "$filtered_old" "$filtered_new" > "$TMP_ROOT/send-diff-plain.txt" 2>&1 \
     || fail "fm-send plain text: tmux command log differs old vs new"$'\n'"$(cat "$TMP_ROOT/send-diff-plain.txt")"
-  assert_contains "$(cat "$log_new")" $'\x1f''send-keys'$'\x1f''-t'$'\x1f''sess:win'$'\x1f''-l'$'\x1f''hello captain' \
+  assert_contains "$(cat "$log_new")" $'\x1f''send-keys'$'\x1f''-t'$'\x1f''sess:win'$'\x1f''-l'$'\x1f''--'$'\x1f''hello captain' \
     "fm-send did not send the literal text with send-keys -l"
   assert_contains "$(cat "$log_new")" $'\x1f''Enter' "fm-send did not submit with Enter"
 

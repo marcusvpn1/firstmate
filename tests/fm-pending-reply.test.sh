@@ -51,6 +51,7 @@ case "${1:-}" in
       case "$1" in
         -t) shift 2 ;;
         -l) literal=1; shift ;;
+        --) shift; break ;;
         *) break ;;
       esac
     done

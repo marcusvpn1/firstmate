@@ -164,7 +164,7 @@ case "${1:-}" in
   send-keys)
     while [ "$#" -gt 0 ]; do
       case "$1" in
-        -l) shift; [ "$#" -gt 0 ] && {
+        -l) shift; [ "${1:-}" = -- ] && shift; [ "$#" -gt 0 ] && {
           printf '%s\n' "$1" >> "${FM_FAKE_TMUX_SENT:-/dev/null}"
           # Reflect sent text into capture so pane_input_pending sees it as
           # pending input (text in the composer).

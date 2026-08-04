@@ -64,7 +64,8 @@ case "${1:-}" in
     prev=
     literal=
     for arg in "$@"; do
-      if [ "$prev" = -l ]; then literal=$arg; break; fi
+      if [ "$prev" = -l ] && [ "$arg" != -- ]; then literal=$arg; break; fi
+      [ "$arg" = -- ] && continue
       prev=$arg
     done
     if [ -n "$literal" ]; then

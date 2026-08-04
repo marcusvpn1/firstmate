@@ -528,11 +528,30 @@ case "${1:-}" in
   list-windows) exit 0 ;;
   has-session|new-session|new-window|kill-window) exit 0 ;;
   send-keys)
-    prev=
+    # Extract the literal text the way real tmux parses send-keys -l:
+    # after -l, an explicit "--" separator marks the literal that follows,
+    # while a bare arg starting with "-" is rejected as a flag (verified on
+    # tmux 3.7b: "command send-keys: invalid flag -"). This models that a
+    # leading-dash brief line is only delivered when the caller passed "--".
+    expect_literal=0
+    saw_separator=0
     literal=
     for arg in "$@"; do
-      if [ "$prev" = -l ]; then literal=$arg; break; fi
-      prev=$arg
+      if [ "$expect_literal" = 1 ]; then
+        if [ "$arg" = -- ]; then saw_separator=1; continue; fi
+        if [ "$saw_separator" = 0 ]; then
+          case "$arg" in
+            -*)
+              printf 'command send-keys: invalid flag -\n' >&2
+              exit 1
+              ;;
+            *) literal=$arg; break ;;
+          esac
+        else
+          literal=$arg; break
+        fi
+      fi
+      [ "$arg" = -l ] && expect_literal=1
     done
     if [ -n "$literal" ]; then
       case "$state" in
@@ -699,6 +718,22 @@ test_agy_multiline_brief_uses_backslash_continuation() {
   pass "fm-spawn: agy sends every non-final brief line with a backslash continuation and submits only on the last line"
 }
 
+test_agy_brief_leading_dash_line_is_delivered() {
+  local rec out status pointer
+  rec=$(make_spawn_case dashline $'- bullet one\nplain line')
+  read_agy_spawn_record "$rec"
+  out=$(FM_FAKE_AGY_TRUST=no run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$ID")
+  status=$?
+  expect_code 0 "$status" "agy spawn should succeed for a brief with a leading-dash line"
+  pointer=$(cat "$CASE_DIR/pointer.log")
+  [ -n "$pointer" ] || fail "agy brief with a leading-dash line was not delivered (send-keys aborted on the dash)"
+  [ "$(printf '%s\n' "$pointer" | sed -n 1p)" = "- bullet one\\" ] \
+    || fail "leading-dash brief line was not delivered verbatim: $pointer"
+  [ "$(printf '%s\n' "$pointer" | sed -n 2p)" = 'plain line' ] \
+    || fail "second brief line was not delivered verbatim: $pointer"
+  pass "fm-spawn: agy delivers a brief line starting with '-' as literal input, not a send-keys flag"
+}
+
 test_agy_readiness_gate_precedes_brief_delivery() {
   local rec out status
   rec=$(make_spawn_case not-ready)
@@ -804,6 +839,7 @@ test_agy_spawn_succeeds
 test_agy_spawn_records_meta
 test_agy_accepts_trust_dialog_before_brief_delivery
 test_agy_multiline_brief_uses_backslash_continuation
+test_agy_brief_leading_dash_line_is_delivered
 test_agy_readiness_gate_precedes_brief_delivery
 test_agy_unconfirmed_delivery_fails_loudly
 test_agy_model_and_effort_reach_launch_command
