@@ -9,4 +9,5 @@ __pycache__/
 *.pyc
 .env
 config/
+.fm-progress.md
 .wrangler/

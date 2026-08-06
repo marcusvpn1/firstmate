@@ -374,6 +374,12 @@ If the top-level path is the primary checkout or not the worktree you were launc
 
 1. First action: create your branch: \`git checkout -b fm/$ID\`$SETUP2
 
+# Multi-task progress
+If this brief contains multiple independent tasks, load \`$FM_ROOT/.agents/skills/progress-ledger/SKILL.md\` before starting any work.
+Create a progress ledger at \`<worktree>/.fm-progress.md\` and follow its procedure: read it on start to skip already-completed tasks, append a dated completion line with the commit hash after each task, and on any restart or recovery read the ledger to pick up where you left off.
+The ledger is gitignored scratch — never commit it.
+When this brief has only one task, skip the ledger entirely.
+
 # Rules
 $RULE1
 2. Stay inside this worktree; modify nothing outside it.
