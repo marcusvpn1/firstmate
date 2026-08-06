@@ -632,6 +632,153 @@ test_scout_and_secondmate_scaffold() {
   pass "fm-brief: scout and secondmate code paths still scaffold well-formed briefs"
 }
 
+test_spec_scaffold() {
+  local home id brief
+  home="$TMP_ROOT/spec-scaffold-home"
+  mkdir -p "$home/data"
+  id="brief-spec-r1"
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+    "$ROOT/bin/fm-brief.sh" "$id" test-repo --spec >/dev/null 2>&1 \
+    || fail "fm-brief.sh --spec scaffold exited non-zero"
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "spec brief was not scaffolded"
+  assert_grep "SPEC task" "$brief" "spec brief must declare itself a SPEC task"
+  assert_grep "structured feature specification" "$brief" "spec brief must reference its structured deliverable"
+  assert_grep "$ROOT/.agents/skills/spec-scaffold/SKILL.md" "$brief" \
+    "spec brief must reference the spec-scaffold skill by absolute path"
+  assert_grep "feature specification template exactly" "$brief" \
+    "spec brief must instruct the crewmate to follow the template exactly"
+  assert_grep "self-review checklist" "$brief" \
+    "spec brief must reference the mandatory self-review checklist"
+  assert_grep "summary, user stories" "$brief" \
+    "spec brief must enumerate the specification sections"
+  assert_grep "NEEDS CLARIFICATION" "$brief" \
+    "spec brief must reference the NEEDS CLARIFICATION marker pattern"
+  assert_grep "$ROOT/.agents/skills/decision-hold-lifecycle/SKILL.md" "$brief" \
+    "spec brief must load the decision-hold-lifecycle shared completion gate"
+  assert_grep "report.md" "$brief" "spec brief must point at the report.md deliverable"
+  assert_no_grep "SCOUT task" "$brief" "spec brief must not declare itself scout"
+  assert_no_grep "PLAN task" "$brief" "spec brief must not declare itself plan"
+  assert_no_grep "constitution check gate" "$brief" "spec brief must not include plan-only template sections"
+  pass "fm-brief.sh: --spec scaffolds a spec brief with the correct template reference"
+}
+
+test_plan_scaffold() {
+  local home id brief
+  home="$TMP_ROOT/plan-scaffold-home"
+  mkdir -p "$home/data"
+  id="brief-plan-r1"
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+    "$ROOT/bin/fm-brief.sh" "$id" test-repo --plan >/dev/null 2>&1 \
+    || fail "fm-brief.sh --plan scaffold exited non-zero"
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "plan brief was not scaffolded"
+  assert_grep "PLAN task" "$brief" "plan brief must declare itself a PLAN task"
+  assert_grep "structured implementation plan" "$brief" "plan brief must reference its structured deliverable"
+  assert_grep "$ROOT/.agents/skills/spec-scaffold/SKILL.md" "$brief" \
+    "plan brief must reference the spec-scaffold skill by absolute path"
+  assert_grep "implementation plan template exactly" "$brief" \
+    "plan brief must instruct the crewmate to follow the template exactly"
+  assert_grep "constitution check gate" "$brief" \
+    "plan brief must reference the constitution check gate"
+  assert_grep "complexity tracking" "$brief" \
+    "plan brief must reference complexity tracking"
+  assert_grep "technical context" "$brief" \
+    "plan brief must enumerate the plan sections"
+  assert_grep "project structure" "$brief" \
+    "plan brief must enumerate project structure"
+  assert_grep "$ROOT/.agents/skills/decision-hold-lifecycle/SKILL.md" "$brief" \
+    "plan brief must load the decision-hold-lifecycle shared completion gate"
+  assert_grep "report.md" "$brief" "plan brief must point at the report.md deliverable"
+  assert_no_grep "SCOUT task" "$brief" "plan brief must not declare itself scout"
+  assert_no_grep "SPEC task" "$brief" "plan brief must not declare itself spec"
+  assert_no_grep "self-review checklist" "$brief" "plan brief must not include spec-only template sections"
+  assert_no_grep "user stories" "$brief" "plan brief must not include spec-only user stories"
+  pass "fm-brief.sh: --plan scaffolds a plan brief with the correct template reference"
+}
+
+test_spec_and_plan_require_repo() {
+  local home err status
+  home="$TMP_ROOT/require-repo-home"
+  mkdir -p "$home/data"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" only-id --spec >/dev/null 2>"$home/spec.err"; status=$?
+  expect_code 1 "$status" "--spec without repo must exit non-zero"
+  assert_grep "--spec requires <task-id> <repo-name>" "$home/spec.err" \
+    "--spec without repo did not emit the correct error"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" only-id --plan >/dev/null 2>"$home/plan.err"; status=$?
+  expect_code 1 "$status" "--plan without repo must exit non-zero"
+  assert_grep "--plan requires <task-id> <repo-name>" "$home/plan.err" \
+    "--plan without repo did not emit the correct error"
+  pass "fm-brief.sh: --spec and --plan require a repo argument"
+}
+
+test_spec_and_plan_with_herdr_lab() {
+  local home id brief
+  home="$TMP_ROOT/spec-plan-herdr-home"
+  mkdir -p "$home/data"
+  id="brief-spec-herdr-r1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" test-repo --spec --herdr-lab >/dev/null 2>&1 \
+    || fail "fm-brief.sh --spec --herdr-lab exited non-zero"
+  brief="$home/data/$id/brief.md"
+  assert_grep "# Herdr isolation - HARD SAFETY CONTRACT" "$brief" \
+    "spec --herdr-lab brief missing the hard safety contract"
+  assert_grep "SPEC task" "$brief" "spec --herdr-lab brief must still declare itself spec"
+  id="brief-plan-herdr-r1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" test-repo --plan --herdr-lab >/dev/null 2>&1 \
+    || fail "fm-brief.sh --plan --herdr-lab exited non-zero"
+  brief="$home/data/$id/brief.md"
+  assert_grep "# Herdr isolation - HARD SAFETY CONTRACT" "$brief" \
+    "plan --herdr-lab brief missing the hard safety contract"
+  assert_grep "PLAN task" "$brief" "plan --herdr-lab brief must still declare itself plan"
+  pass "fm-brief.sh: --spec and --plan accept --herdr-lab"
+}
+
+test_spec_and_plan_pause_verb_override() {
+  local home id brief
+  home="$TMP_ROOT/spec-plan-pause-home"
+  mkdir -p "$home/data"
+  for kind in spec plan; do
+    id="brief-pause-verb-$kind"
+    FM_HOME="$home" FM_CLASSIFY_PAUSED_VERB=awaiting \
+      "$ROOT/bin/fm-brief.sh" "$id" test-repo --$kind >/dev/null 2>&1
+    brief="$home/data/$id/brief.md"
+    assert_grep "States: working, needs-decision, blocked, awaiting, done, failed." "$brief" \
+      "$kind brief did not render the configured pause verb in its states list"
+    assert_grep 'Use `awaiting: {why}`' "$brief" \
+      "$kind brief did not instruct the configured pause status"
+    assert_no_grep '`paused: {why}`' "$brief" \
+      "$kind brief still instructs the default paused status"
+  done
+  pass "fm-brief.sh: custom pause verb renders in spec and plan briefs"
+}
+
+test_spec_scaffold_kind_is_in_usage() {
+  local help
+  help=$("$ROOT/bin/fm-brief.sh" --help)
+  assert_contains "$help" "--spec writes a feature specification contract" \
+    "--help must document --spec"
+  assert_contains "$help" "--plan writes an implementation plan contract" \
+    "--help must document --plan"
+  pass "fm-brief.sh: --help documents --spec and --plan"
+}
+
+test_spec_plan_guard_does_not_affect_secondmate() {
+  local home id brief
+  home="$TMP_ROOT/spec-plan-secondmate-home"
+  mkdir -p "$home/data"
+  id="brief-secondmate-with-projects-r1"
+  FM_HOME="$home" FM_SECONDMATE_CHARTER='Handle ops.' \
+    "$ROOT/bin/fm-brief.sh" "$id" --secondmate alpha beta >/dev/null 2>&1 \
+    || fail "fm-brief.sh secondmate with projects must still work"
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "secondmate with projects brief was not scaffolded"
+  assert_grep "persistent second mate" "$brief" \
+    "secondmate with projects charter must declare its role"
+  assert_grep "- alpha" "$brief" "secondmate charter must list project alpha"
+  assert_grep "- beta" "$brief" "secondmate charter must list project beta"
+  pass "fm-brief.sh: secondmate with projects still works alongside spec/plan variants"
+}
+
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
@@ -649,3 +796,10 @@ test_secondmate_directory_paths_are_absolute_and_output_is_stable
 test_pause_verb_override_renders_all_brief_scaffolds
 test_scout_and_secondmate_load_decision_hold_policy
 test_scout_and_secondmate_scaffold
+test_spec_scaffold
+test_plan_scaffold
+test_spec_and_plan_require_repo
+test_spec_and_plan_with_herdr_lab
+test_spec_and_plan_pause_verb_override
+test_spec_scaffold_kind_is_in_usage
+test_spec_plan_guard_does_not_affect_secondmate

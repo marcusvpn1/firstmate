@@ -124,10 +124,6 @@ if [ "$NO_PROJECTS" -eq 1 ] && [ "$KIND" != secondmate ]; then
   exit 1
 fi
 
-if [ "$KIND" = secondmate ]; then
-  [ -z "${POS[1]:-}" ] || { echo "error: --secondmate does not take a repo argument" >&2; exit 1; }
-fi
-
 for k in spec plan; do
   if [ "$KIND" = "$k" ]; then
     [ "${#POS[@]}" -ge 2 ] || { echo "error: --$k requires <task-id> <repo-name>" >&2; exit 1; }
