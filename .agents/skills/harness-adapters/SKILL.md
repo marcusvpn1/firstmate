@@ -439,3 +439,42 @@ A prior, narrower finding (data/learnings.md, 2026-07-29) described a hand-norma
 **Worktree-isolation false pwd (separate, unresolved quirk).** AGY's own reported `pwd -P` inside its first tool call has been observed resolving to the PRIMARY checkout even when `fm-spawn.sh`'s meta and the launching shell's own `cd` correctly show the treehouse worktree, recurring across different models.
 A worker's isolation-assertion gate self-blocking (`blocked: launched in primary checkout, not an isolated worktree`) on an agy task should be treated with suspicion of this agy-specific pwd-resolution quirk rather than assumed to prove firstmate's own spawn is broken.
 Not yet root-caused; out of scope for the launch-mode fix above.
+
+## codebase-memory-mcp MCP server
+
+Codebase-memory-mcp v0.9.0 is configured as an MCP server for crewmate harnesses.
+The binary is at `/Users/marcusnascimento/.local/bin/codebase-memory-mcp` and the firstmate repo is indexed with `--mode full` (6,998 nodes, 27,390 edges, includes `bin/` and `docs/`).
+Validation evidence: `data/cbmm-firstmate-test/report.md` (fast-mode baseline) and `data/cbmm-moderate-test/report.md` (full-mode validation).
+
+**Harness support:**
+
+| Harness | Config path | Mechanism |
+|---------|-------------|-----------|
+| claude | `~/.claude/.mcp.json` (global) | Native MCP, tools auto-discovered |
+| codex | `~/.codex/config.toml` (global) | Native MCP, `[mcp_servers.codebase-memory-mcp]` |
+| opencode | `~/.config/opencode/opencode.json` (global) | Native MCP, `mcp` key |
+| grok | `.mcp.json` (project root) | Native MCP, Claude-compatible |
+| pi / pi-signed | `.pi/extensions/fm-cbmm-mcp.ts` (project-local) | Extension-registered tools via CLI |
+
+kimi and agy have no verified MCP integration surface.
+
+**Tool selection for crewmates:**
+
+| Query type | Tool | Notes |
+|-----------|------|-------|
+| Find function/symbol by name | `search_graph` | BM25 keyword search; use `name_pattern` for regex |
+| Find text/pattern in files | `search_code` | Ripgrep-like; fall back when `search_graph` misses |
+| Trace call dependencies | `query_graph` (Cypher) | `MATCH (a)-[r:CALLS]->(b) RETURN …` |
+| Codebase orientation | `get_architecture` | Layers, hotspots, clusters, boundaries |
+| Call-path from known function | `trace_path` | `direction=inbound\|outbound\|both` |
+| Read source for graph node | `get_code_snippet` | Use after `search_graph` to read matched code |
+| Check index availability | `list_projects` | Confirm project is indexed before other calls |
+
+**Index must be `--mode full`.** Fast and moderate modes exclude `bin/` and `docs/` — the core of the firstmate codebase.
+Full mode indexes 299 files including 213 Bash scripts in 1.39 seconds.
+The index artifact (`.codebase-memory/graph.db.zst`) is gitignored and cached under `~/.cache/codebase-memory-mcp/`.
+
+**Pi extension details.** The `.pi/extensions/fm-cbmm-mcp.ts` extension registers `cbmm_search_graph`, `cbmm_search_code`, `cbmm_query_graph`, `cbmm_get_architecture`, `cbmm_trace_path`, `cbmm_get_code_snippet`, and `cbmm_list_projects`.
+Each tool shells out to `codebase-memory-mcp cli <tool>` and returns JSON.
+The project ID is resolved once per session from `list_projects` matching the current cwd.
+Error output (the `level=info msg=mem.init` line on stderr) is suppressed.
