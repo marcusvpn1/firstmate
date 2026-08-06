@@ -220,7 +220,7 @@ export default function (pi: ExtensionAPI) {
       aspects: Type.Optional(
         Type.String({
           description:
-            "Comma-separated aspects to include: layers, hotspots, clusters, boundaries, languages, file_tree, all (default: layers,hotspots).",
+            "Aspect to include: all, overview, structure, dependencies, routes, languages, packages, entry_points, hotspots, boundaries, layers, file_tree, clusters (default: layers).",
         }),
       ),
     }),
@@ -238,7 +238,7 @@ export default function (pi: ExtensionAPI) {
       try {
         const result = callCli(
           "get_architecture",
-          { aspects: params.aspects ?? "layers,hotspots" },
+          { aspects: params.aspects ?? "layers" },
           projectId,
         );
         return {
