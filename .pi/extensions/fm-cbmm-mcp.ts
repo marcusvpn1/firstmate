@@ -11,7 +11,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 const BINARY = "codebase-memory-mcp";
 
 // ---------------------------------------------------------------------------
@@ -23,7 +23,7 @@ let _projectId: string | null = null;
 function resolveProjectId(cwd: string): string | null {
   if (_projectId !== null) return _projectId || null;
   try {
-    const raw = execSync(`${BINARY} cli list_projects 2>/dev/null`, {
+    const raw = execFileSync(BINARY, ["cli", "list_projects"], {
       encoding: "utf-8",
       timeout: 5_000,
       stdio: ["ignore", "pipe", "pipe"],
@@ -50,23 +50,21 @@ interface CliArgs {
 }
 
 function callCli(tool: string, args: CliArgs, projectId: string): unknown {
-  const parts: string[] = [];
+  const argList: string[] = ["cli", tool, "--project", projectId];
   for (const [key, value] of Object.entries(args)) {
     if (value === undefined || value === false) continue;
     const flag = `--${key}`;
     if (value === true) {
-      parts.push(flag);
+      argList.push(flag);
       continue;
     }
     if (Array.isArray(value)) {
-      parts.push(`${flag} '${JSON.stringify(value)}'`);
+      argList.push(flag, JSON.stringify(value));
       continue;
     }
-    parts.push(`${flag} '${String(value)}'`);
+    argList.push(flag, String(value));
   }
-  const argStr = parts.join(" ");
-  const cmd = `${BINARY} cli ${tool} --project '${projectId}' ${argStr}`;
-  const stdout = execSync(cmd, {
+  const stdout = execFileSync(BINARY, argList, {
     encoding: "utf-8",
     maxBuffer: 10 * 1024 * 1024,
     timeout: 30_000,
@@ -348,7 +346,7 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({}),
     async execute() {
       try {
-        const raw = execSync(`${BINARY} cli list_projects 2>/dev/null`, {
+        const raw = execFileSync(BINARY, ["cli", "list_projects"], {
           encoding: "utf-8",
           timeout: 5_000,
           stdio: ["ignore", "pipe", "pipe"],
