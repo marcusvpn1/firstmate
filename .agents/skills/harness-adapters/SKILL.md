@@ -443,7 +443,7 @@ Not yet root-caused; out of scope for the launch-mode fix above.
 ## codebase-memory-mcp MCP server
 
 Codebase-memory-mcp v0.9.0 is configured as an MCP server for crewmate harnesses.
-The binary is at `/Users/marcusnascimento/.local/bin/codebase-memory-mcp` and the firstmate repo is indexed with `--mode full` (6,998 nodes, 27,390 edges, includes `bin/` and `docs/`).
+The codebase-memory-mcp binary, installed via its own install script and available on PATH, indexes the firstmate repo with `--mode full` (6,998 nodes, 27,390 edges, includes `bin/` and `docs/`).
 Validation evidence: `data/cbmm-firstmate-test/report.md` (fast-mode baseline) and `data/cbmm-moderate-test/report.md` (full-mode validation).
 
 **Harness support:**

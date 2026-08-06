@@ -12,7 +12,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { execSync } from "node:child_process";
-const BINARY = "/Users/marcusnascimento/.local/bin/codebase-memory-mcp";
+const BINARY = "codebase-memory-mcp";
 
 // ---------------------------------------------------------------------------
 // Project-id resolution
