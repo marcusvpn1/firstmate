@@ -154,10 +154,12 @@ Independently, `fm-spawn.sh`, `fm-send.sh`, and `fm-teardown.sh` source `bin/fm-
 A normal primary checkout or crewmate worktree has neither signal and remains unaffected.
 The helper's header owns the exact signal detection, relocated-home limitation, test-harness bypass, and relationship to no-mistakes' HEAD-continuity guard.
 
-## Two task shapes
+## Task shapes
 
-Ship tasks change projects and ship by project mode (`no-mistakes`, `direct-PR`, or `local-only`); scout tasks leave standalone investigation reports at `data/<id>/report.md` and never push.
-The intake and authority contract in `AGENTS.md` owns when separate scout research is warranted.
+Ship tasks change projects and ship by project mode (`no-mistakes`, `direct-PR`, or `local-only`).
+Scout, spec, and plan tasks all deliver a standalone report at `data/<id>/report.md` from a scratch worktree and never push.
+Scout reports are freeform investigation narratives; spec and plan reports follow the structured templates owned by `.agents/skills/spec-scaffold/SKILL.md` and scaffolded through `fm-brief.sh --spec` or `fm-brief.sh --plan`.
+The intake and authority contract in `AGENTS.md` owns when separate scout, spec, or plan research is warranted.
 
 ## Dispatch profiles
 

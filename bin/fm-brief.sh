@@ -6,10 +6,16 @@
 # description, acceptance criteria, and context, and may adjust other sections
 # when the task genuinely deviates (e.g. working an existing external PR instead
 # of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> [--scout] [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> [--scout|--spec|--plan] [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
+#   --spec writes a feature specification contract: the deliverable is a structured
+#   spec at data/<task-id>/report.md following the spec-scaffold template
+#   (no branch, no push, no PR) and the worktree is scratch.
+#   --plan writes an implementation plan contract: the deliverable is a structured
+#   plan at data/<task-id>/report.md following the spec-scaffold plan template
+#   (no branch, no push, no PR) and the worktree is scratch.
 #   --secondmate writes a persistent secondmate charter. The project list
 #   is cloned into the secondmate home, while the natural-language scope
 #   tells the main firstmate when to route work there; routine churn stays in its own home;
@@ -98,6 +104,8 @@ POS=()
 for a in "$@"; do
   case "$a" in
     --scout) KIND=scout ;;
+    --spec) KIND=spec ;;
+    --plan) KIND=plan ;;
     --secondmate) KIND=secondmate ;;
     --herdr-lab) HERDR_LAB=1 ;;
     --no-projects) NO_PROJECTS=1 ;;
@@ -107,7 +115,7 @@ done
 ID=${POS[0]}
 
 if [ "$KIND" = secondmate ] && [ "$HERDR_LAB" -eq 1 ]; then
-  echo "error: --herdr-lab applies only to crewmate ship or scout briefs" >&2
+  echo "error: --herdr-lab applies only to crewmate ship, scout, spec, or plan briefs" >&2
   exit 1
 fi
 
@@ -115,6 +123,12 @@ if [ "$NO_PROJECTS" -eq 1 ] && [ "$KIND" != secondmate ]; then
   echo "error: --no-projects applies only to --secondmate charters" >&2
   exit 1
 fi
+
+for k in spec plan; do
+  if [ "$KIND" = "$k" ]; then
+    [ "${#POS[@]}" -ge 2 ] || { echo "error: --$k requires <task-id> <repo-name>" >&2; exit 1; }
+  fi
+done
 
 BRIEF="$DATA/$ID/brief.md"
 [ -e "$BRIEF" ] && { echo "error: $BRIEF already exists" >&2; exit 1; }
@@ -292,6 +306,109 @@ When the report is complete, append \`done: {one-line conclusion}\` to the statu
 If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.
 EOF
 echo "scaffolded: $BRIEF (scout; replace {TASK})"
+exit 0
+fi
+
+if [ "$KIND" = spec ]; then
+cat > "$BRIEF" <<EOF
+You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
+
+# Task
+{TASK}
+
+$HERDR_SECTION
+
+# Setup
+You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
+This is a SPEC task: the deliverable is a structured feature specification, not a PR.
+The worktree is your laboratory - install, run, edit, and make scratch commits freely; all of it is discarded at teardown.
+The spec is the only thing that survives, so anything worth keeping must be in it.
+
+**Before writing the spec,** load \`$FM_ROOT/.agents/skills/spec-scaffold/SKILL.md\` and follow its feature specification template exactly.
+The skill is the single owner of the template structure and the mandatory self-review checklist.
+
+# Rules
+1. Never push to any remote and never open a PR.
+2. Stay inside this worktree; the only files you may write outside it are the spec and the status file below.
+3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+4. Report status by appending one line:
+   \`echo "{state}: {one short line}" >> $STATUS_FILE\`
+   States: working, needs-decision, blocked, $PAUSED_VERB, done, failed.
+   Each append wakes firstmate, so report sparingly: only phase changes a supervisor
+   would act on and the needs-decision/blocked/paused/done/failed states. No step-by-step
+   FYI progress lines; firstmate reads your pane for that.
+   Use \`$PAUSED_VERB: {why}\` - distinct from \`blocked:\` - ONLY when you are deliberately idling on a
+   known external wait you expect to clear on its own (an upstream release, a rate-limit reset):
+   firstmate then leaves your idle pane alone and rechecks it on a long cadence instead of
+   treating it as a possible wedge. Use \`blocked:\` when you are stuck and need help.
+5. If you hit the same obstacle twice, append \`blocked: {why}\` and stop; firstmate will help.
+6. If a decision belongs to a human (product choices, destructive actions),
+   append \`needs-decision: {summary of options}\` and stop. Firstmate will reply with the decision.
+   When firstmate replies or a blocker clears and you resume, append \`resolved: {how it was decided or unblocked}\` (add the same \`[key=<slug>]\` if you opened it with one) so the decision or blocker is durably closed and does not keep resurfacing.
+7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
+   every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
+   daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
+
+# Definition of done
+Write the structured specification to \`$DATA/$ID/report.md\` following the spec-scaffold template.
+The spec must include every section from the template: summary, user stories (prioritized, independently testable), acceptance scenarios (Given/When/Then), functional requirements with \`[NEEDS CLARIFICATION: <question>]\` markers, success criteria (measurable, technology-agnostic), assumptions, and edge cases.
+Before reporting done, run the mandatory self-review checklist from the spec-scaffold skill: scan for placeholders, ambiguity, internal contradictions, coverage gaps, testability, edge-case coverage, and assumption validation.
+Before reporting done, also read and follow \`$FM_ROOT/.agents/skills/decision-hold-lifecycle/SKILL.md\` and pass its shared completion gate for the spec and any visual review.
+When the spec is complete and the self-review passes, append \`done: {one-line spec summary}\` to the status file and stop.
+EOF
+echo "scaffolded: $BRIEF (spec; replace {TASK})"
+exit 0
+fi
+
+if [ "$KIND" = plan ]; then
+cat > "$BRIEF" <<EOF
+You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
+
+# Task
+{TASK}
+
+$HERDR_SECTION
+
+# Setup
+You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
+This is a PLAN task: the deliverable is a structured implementation plan, not a PR.
+The worktree is your laboratory - install, run, edit, and make scratch commits freely; all of it is discarded at teardown.
+The plan is the only thing that survives, so anything worth keeping must be in it.
+
+**Before writing the plan,** load \`$FM_ROOT/.agents/skills/spec-scaffold/SKILL.md\` and follow its implementation plan template exactly.
+The skill is the single owner of the template structure, including the constitution check gate and the complexity tracking table.
+If a spec exists (from a prior spec task or scout report), read it first and use it as the plan's input.
+If no spec exists, note that as a risk and flag which requirements are inferred.
+
+# Rules
+1. Never push to any remote and never open a PR.
+2. Stay inside this worktree; the only files you may write outside it are the plan and the status file below.
+3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+4. Report status by appending one line:
+   \`echo "{state}: {one short line}" >> $STATUS_FILE\`
+   States: working, needs-decision, blocked, $PAUSED_VERB, done, failed.
+   Each append wakes firstmate, so report sparingly: only phase changes a supervisor
+   would act on and the needs-decision/blocked/paused/done/failed states. No step-by-step
+   FYI progress lines; firstmate reads your pane for that.
+   Use \`$PAUSED_VERB: {why}\` - distinct from \`blocked:\` - ONLY when you are deliberately idling on a
+   known external wait you expect to clear on its own (an upstream release, a rate-limit reset):
+   firstmate then leaves your idle pane alone and rechecks it on a long cadence instead of
+   treating it as a possible wedge. Use \`blocked:\` when you are stuck and need help.
+5. If you hit the same obstacle twice, append \`blocked: {why}\` and stop; firstmate will help.
+6. If a decision belongs to a human (product choices, destructive actions),
+   append \`needs-decision: {summary of options}\` and stop. Firstmate will reply with the decision.
+   When firstmate replies or a blocker clears and you resume, append \`resolved: {how it was decided or unblocked}\` (add the same \`[key=<slug>]\` if you opened it with one) so the decision or blocker is durably closed and does not keep resurfacing.
+7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
+   every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
+   daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
+
+# Definition of done
+Write the structured implementation plan to \`$DATA/$ID/report.md\` following the spec-scaffold plan template.
+The plan must include every section from the template: technical context, constitution check gate (read the project's \`AGENTS.md\` and check every applicable rule), project structure (files to create/modify/delete with one-sentence responsibilities), interfaces (consumes/produces/contracts), and complexity tracking (every design decision that adds complexity beyond the simplest approach, with justification).
+Before reporting done, read and follow \`$FM_ROOT/.agents/skills/decision-hold-lifecycle/SKILL.md\` and pass its shared completion gate for the plan and any visual review.
+When the plan is complete, append \`done: {one-line plan summary}\` to the status file and stop.
+EOF
+echo "scaffolded: $BRIEF (plan; replace {TASK})"
 exit 0
 fi
 
