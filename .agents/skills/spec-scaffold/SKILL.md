@@ -156,7 +156,7 @@ no-mistakes axi run --intent "... Spec: docs/specs/<file>.md ..."
 
 This line is the bridge between the committed spec and the review agent.
 The `review.path_instructions` entry (configured separately in the target repo's `.no-mistakes.yaml`) uses it to locate the spec and verify P1/P2 story coverage, `[NEEDS CLARIFICATION]` resolution, and divergence documentation.
-For local-only delivery projects, include `Spec: docs/specs/<file>.md` in the commit message body instead.
+For local-only and direct-PR delivery projects, include `Spec: docs/specs/<file>.md` in the commit message body instead.
 
 ## Implementation plan template
 

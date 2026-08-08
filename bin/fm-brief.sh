@@ -428,6 +428,7 @@ case "$MODE" in
 # Definition of done
 This project ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
+If this task was promoted from a spec or plan, include a \`Spec: docs/specs/<file>.md\` line in the commit message body referencing the committed spec (see \`.agents/skills/spec-scaffold/SKILL.md\` for the commit-forward convention).
 When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file and stop.
 Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
 EOF
