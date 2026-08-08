@@ -272,6 +272,10 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/specs/README.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": "docs/sessionstart-nudge.md",
       "audience": "operator-current"
     },

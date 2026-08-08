@@ -325,7 +325,8 @@ The worktree is your laboratory - install, run, edit, and make scratch commits f
 The spec is the only thing that survives, so anything worth keeping must be in it.
 
 **Before writing the spec,** load \`$FM_ROOT/.agents/skills/spec-scaffold/SKILL.md\` and follow its feature specification template exactly.
-The skill is the single owner of the template structure and the mandatory self-review checklist.
+The skill is the single owner of the template structure, the mandatory self-review checklist, the spec granularity guideline, and the spec organization/index convention.
+Also read \`docs/specs/README.md\` in the target repo to check the existing spec index before writing — the spec-scaffold skill's organization convention governs whether to append to an existing topic doc or create a new one.
 
 # Rules
 1. Never push to any remote and never open a PR.
@@ -439,6 +440,7 @@ EOF
 This project ships **local-only**: no remote, no PR, no pipeline.
 The task is complete only when committed on your branch \`fm/$ID\`. Do NOT push, do NOT open a PR, do NOT merge.
 Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
+If this task was promoted from a spec or plan, include a \`Spec: docs/specs/<file>.md\` line in the commit message body referencing the committed spec (see \`.agents/skills/spec-scaffold/SKILL.md\` for the commit-forward convention).
 When it is implemented and committed, append \`done: ready in branch fm/$ID\` to the status file and stop.
 The configured merge authority approves the ready branch, then firstmate merges it into local \`main\` through the guarded fast-forward path.
 EOF
@@ -456,6 +458,7 @@ Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
 You drive no-mistakes by responding to its gates, not by implementing fixes.
 Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke /no-mistakes, and \`no-mistakes axi run --help\` plus the \`help\` lines in each \`axi\` response are authoritative and version-matched to the installed binary.
 When starting no-mistakes, make \`--intent\` preserve all relevant content from this brief's \`# Task\` section plus every later accepted Firstmate requirement, clarification, constraint, exclusion, and supersession, carrying only each requirement's current accepted form; retain direct requirements instead of substituting a diff summary, and exclude generic operational, status, delivery, and other scaffold boilerplate unless it is task-specific.
+If this task was promoted from a spec or plan, include a \`Spec: docs/specs/<file>.md\` line in \`--intent\` referencing the committed spec so review can discover and verify it (see \`.agents/skills/spec-scaffold/SKILL.md\` for the commit-forward convention).
 Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
 
 Two firstmate-specific rules layer on top of that guidance:
