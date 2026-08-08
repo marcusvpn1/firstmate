@@ -199,6 +199,7 @@ fm_dod_block() {  # <mode> <task-id>
 Delivery contract: mode=direct-PR
 This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
+If this task was promoted from a spec or plan, include a \`Spec: docs/specs/<file>.md\` line in the commit message body referencing the committed spec (see \`.agents/skills/spec-scaffold/SKILL.md\` for the commit-forward convention).
 When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file and stop.
 Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
 EOF
@@ -210,6 +211,7 @@ Delivery contract: mode=local-only
 This task ships **local-only**: no remote, no PR, no pipeline.
 The task is complete only when committed on your branch \`fm/$id\`. Do NOT push, do NOT open a PR, do NOT merge.
 Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
+If this task was promoted from a spec or plan, include a \`Spec: docs/specs/<file>.md\` line in the commit message body referencing the committed spec (see \`.agents/skills/spec-scaffold/SKILL.md\` for the commit-forward convention).
 When it is implemented and committed, append \`done: ready in branch fm/$id\` to the status file and stop.
 The configured merge authority approves the ready branch, then firstmate merges it into local \`main\` through the guarded fast-forward path.
 EOF
@@ -230,6 +232,7 @@ Do not include \`## Firstmate spec\`, later Firstmate build constraints, or your
 The \`--intent\` string you pass must be self-sufficient: that string plus the codebase must let a reader reconstruct roughly the same specification, without depending on a separate report, a PR, or context that lives only in this conversation.
 When the captain's intent refers to a report, decision, or PR ("do items 1, 2, 3, and 7 of the report"), write the substance of the referenced items into \`--intent\` in the captain's terms, not only the pointer; that substance is the captain's ask by reference, while Firstmate's build instructions and your own decisions still stay out.
 This replaces the no-mistakes skill's advice to enrich \`--intent\` with decisions and tradeoffs; that advice does not apply to Firstmate-dispatched work.
+If this task was promoted from a spec or plan, include a \`Spec: docs/specs/<file>.md\` line in \`--intent\` referencing the committed spec so review can discover and verify it (see \`.agents/skills/spec-scaffold/SKILL.md\` for the commit-forward convention).
 Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
 
 One drive call blocks until the next gate or outcome, which routinely outlives what your harness lets a single command run: Claude Code kills a command at ten minutes maximum, while one fix round is capped around thirty minutes and up to three rounds chain.

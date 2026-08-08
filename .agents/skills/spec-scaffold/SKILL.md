@@ -84,6 +84,80 @@ The checklist is mandatory, not optional.
 6. **Edge-case coverage:** Verify the edge cases section covers empty input, maximum input, concurrent use, network failure, and auth failure.
 7. **Assumption validation:** For every assumption, verify the consequence of it being false is stated.
 
+## Spec granularity guideline
+
+A spec is warranted when at least **two** of the following are true.
+If fewer than two are true, a spec is overhead — ship directly with clear acceptance criteria in the task brief.
+
+1. **New user-facing capability:** the change introduces a behavior a user (human or API consumer) can observe, as opposed to a bug fix, internal refactor, or cleanup.
+2. **Cross-subsystem scope:** the change touches 3+ files across 2+ distinct subsystems, packages, or modules that are not already tightly coupled.
+3. **Public API or data model change:** the change modifies a public interface, wire format, schema migration, or persistent data layout.
+4. **Non-obvious user story:** at least one P1 user story does not follow trivially from a one-sentence task description — the desired behavior would need explanation to a new teammate.
+5. **Decision record exists:** the feature has a documented ADR, an open decision hold, or a `[NEEDS CLARIFICATION]` marker that must be resolved before implementation.
+6. **Design ambiguity:** two reasonable engineers starting from the same task description could produce materially different implementations.
+
+A spec is NOT warranted for bug fixes (expected behavior is already defined; a regression test suffices), single-subsystem refactors, dependency bumps, tooling changes, config-only changes, or trivial feature additions where the acceptance criteria are a single sentence.
+
+When in doubt, start a spec.
+It is cheaper to discard a spec you did not need than to discover mid-implementation that you needed one.
+
+## Spec organization and index convention
+
+Target repos maintain a `docs/specs/` directory with a `README.md` index that maps topic areas to their files.
+The index is a lightweight bullet list, not a taxonomy — a new teammate should be able to scan it in under 30 seconds.
+Example:
+
+```
+# Specs index
+
+- **Performance:** performance-benchmarks.md
+- **CLI / user interface:** cli-ux.md
+- **Data model:** data-model.md
+- **Integrations:** github-integration.md, gitlab-integration.md
+```
+
+When authoring a spec (this spec-scaffold skill is loaded):
+
+1. Read `docs/specs/README.md` first.
+   If the directory or index does not exist yet, create both as the first spec.
+2. If the feature is a natural extension of an existing topic, append to or modify that topic's file.
+   Start a new top-level heading (`##`) within the file for the new feature.
+3. If the feature is a genuinely new topic per the granularity guideline above, create a new file and add it to the index.
+4. Update the index either way so the next author sees the current map.
+
+Each committed spec entry is a frozen point-in-time record.
+Prepend a status block to each entry so a reader can tell at a glance that it is historical:
+
+```
+> **Spec:** <task-id> | **Date:** <YYYY-MM-DD> | **Status:** shipped (frozen record)
+```
+
+## Commit-forward convention for ship workers
+
+When a spec-driven feature ships (this spec-scaffold skill is loaded by the promoted ship worker):
+
+1. Read the spec report at the path given in the promotion message (usually `data/<task-id>/report.md` in the firstmate home).
+2. Resolve or explicitly re-open every `[NEEDS CLARIFICATION: ...]` marker.
+   A marker you resolve should state how the implementation resolved it.
+   A marker left open must be explicitly acknowledged — never silently dropped.
+3. Commit the spec content into the appropriate doc per the index convention above.
+   If the spec was appended to an existing doc, commit the updated doc.
+   If a new doc was created, commit it and update `docs/specs/README.md`.
+   The committed spec gets the frozen-record status block shown above.
+4. Do not expect future work to keep the committed spec in sync — it is a point-in-time artifact, like an ADR.
+
+## Spec: intent-line requirement
+
+When driving no-mistakes for a spec-driven ship task, include a `Spec:` line in `--intent` so review can discover and check the spec:
+
+```
+no-mistakes axi run --intent "... Spec: docs/specs/<file>.md ..."
+```
+
+This line is the bridge between the committed spec and the review agent.
+The `review.path_instructions` entry (configured separately in the target repo's `.no-mistakes.yaml`) uses it to locate the spec and verify P1/P2 story coverage, `[NEEDS CLARIFICATION]` resolution, and divergence documentation.
+For local-only and direct-PR delivery projects, include `Spec: docs/specs/<file>.md` in the commit message body instead.
+
 ## Implementation plan template
 
 Produce an implementation plan document with every section below.

@@ -446,7 +446,8 @@ The worktree is your laboratory - install, run, edit, and make scratch commits f
 The spec is the only thing that survives, so anything worth keeping must be in it.
 
 **Before writing the spec,** load \`$FM_ROOT/.agents/skills/spec-scaffold/SKILL.md\` and follow its feature specification template exactly.
-The skill is the single owner of the template structure and the mandatory self-review checklist.
+The skill is the single owner of the template structure, the mandatory self-review checklist, the spec granularity guideline, and the spec organization/index convention.
+Also read \`docs/specs/README.md\` in the target repo to check the existing spec index before writing — the spec-scaffold skill's organization convention governs whether to append to an existing topic doc or create a new one.
 
 # Rules
 1. Never push to any remote and never open a PR.

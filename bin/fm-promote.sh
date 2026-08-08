@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Promote a scout task to a ship task in place: the crewmate keeps its window,
+# Promote a scout, spec, or plan task to a ship task in place: the crewmate keeps its window,
 # worktree, and loaded context; only the contract changes. Flips kind= to ship in
 # state/<task-id>.meta so fm-teardown.sh applies the full ship-task teardown protection
 # again. Promotion also writes the crewmate's ship instructions to
@@ -131,7 +131,19 @@ if ! fm_backlog_record_present "$META" "task record" "$STATE"; then
   echo "error: task record for $ID is unsafe or missing ($FM_BACKLOG_TRANSITION_ERROR)" >&2
   exit 1
 fi
-grep -qx 'kind=scout' "$META" || { echo "error: task $ID is not a scout task (kind=scout not in meta)" >&2; exit 1; }
+KIND=$(grep '^kind=' "$META" | cut -d= -f2)
+case "$KIND" in
+  scout|spec|plan) ;;
+  *) echo "error: task $ID is not a promotable task (kind=$KIND, expected scout, spec, or plan)" >&2; exit 1 ;;
+esac
+
+if [ "$KIND" = spec ] || [ "$KIND" = plan ]; then
+  REPORT="$FM_HOME/data/$ID/report.md"
+  [ -f "$REPORT" ] || { echo "error: task $ID has no report at $REPORT; the spec/plan must complete and produce a report before promotion" >&2; exit 1; }
+  PROMOTION_KIND_STEP="5. This task was promoted from a $KIND. Load \`$FM_ROOT/.agents/skills/spec-scaffold/SKILL.md\` and follow its commit-forward convention: read the $KIND at \`$REPORT\`, commit the spec content into the right doc per \`docs/specs/README.md\`, resolve or explicitly re-open every \`[NEEDS CLARIFICATION]\` marker, and include a \`Spec: docs/specs/<file>.md\` line in \`--intent\` (no-mistakes) or the commit message (direct-PR/local-only)."
+else
+  PROMOTION_KIND_STEP="5. If you reproduced a bug, turn that reproduction into a regression test."
+fi
 
 SCOUT_BRIEF="$DATA/$ID/brief.md"
 if fm_brief_task_placeholders_present "$SCOUT_BRIEF"; then
@@ -181,7 +193,7 @@ EOF
 2. Inventory this worktree's scratch state with \`git status\` and \`git log\` before changing anything.
 3. Return to a clean default-branch base, then create your branch: \`git checkout -b fm/$ID\`.
 4. Carry over only the intended fix changes. Leave scratch commits, debug edits, and experiment files behind.
-5. If you reproduced a bug, turn that reproduction into a regression test.
+$PROMOTION_KIND_STEP
 6. These ship instructions supersede the scout delivery rules and report-based Definition of done. Everything else in your original instructions carries over unchanged: the status protocol; the instruction inbox and its acknowledgement; the escalation rules, including ask-user; and every safety rule.
 $PROMOTION_ASK_USER_BLOCK
 7. Treat the scout-time Firstmate spec and any unmarked legacy \`# Task\` text as investigation context, not captain intent or ship-time instructions.
