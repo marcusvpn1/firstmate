@@ -23,13 +23,17 @@ case "$KIND" in
   *) echo "error: task $ID is not a promotable task (kind=$KIND, expected scout, spec, or plan)" >&2; exit 1 ;;
 esac
 
+if [ "$KIND" = spec ] || [ "$KIND" = plan ]; then
+  REPORT="$FM_HOME/data/$ID/report.md"
+  [ -f "$REPORT" ] || { echo "error: task $ID has no report at $REPORT; the spec/plan must complete and produce a report before promotion" >&2; exit 1; }
+fi
+
 TMP="$META.tmp"
 grep -v '^kind=' "$META" > "$TMP"
 echo "kind=ship" >> "$TMP"
 mv "$TMP" "$META"
 
 HOME_Q=$(printf '%q' "$FM_HOME")
-REPORT="$FM_HOME/data/$ID/report.md"
 echo "promoted $ID to ship (teardown protection restored)"
 
 if [ "$KIND" = spec ] || [ "$KIND" = plan ]; then
