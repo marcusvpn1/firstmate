@@ -17,7 +17,16 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 ID=$1
 META="$STATE/$ID.meta"
 [ -f "$META" ] || { echo "error: no meta for task $ID at $META" >&2; exit 1; }
-grep -qx 'kind=scout' "$META" || { echo "error: task $ID is not a scout task (kind=scout not in meta)" >&2; exit 1; }
+KIND=$(grep '^kind=' "$META" | cut -d= -f2)
+case "$KIND" in
+  scout|spec|plan) ;;
+  *) echo "error: task $ID is not a promotable task (kind=$KIND, expected scout, spec, or plan)" >&2; exit 1 ;;
+esac
+
+if [ "$KIND" = spec ] || [ "$KIND" = plan ]; then
+  REPORT="$FM_HOME/data/$ID/report.md"
+  [ -f "$REPORT" ] || { echo "error: task $ID has no report at $REPORT; the spec/plan must complete and produce a report before promotion" >&2; exit 1; }
+fi
 
 TMP="$META.tmp"
 grep -v '^kind=' "$META" > "$TMP"
@@ -26,4 +35,10 @@ mv "$TMP" "$META"
 
 HOME_Q=$(printf '%q' "$FM_HOME")
 echo "promoted $ID to ship (teardown protection restored)"
-echo "next: FM_HOME=$HOME_Q bin/fm-send.sh fm-$ID '<ship instructions: review scratch state with git status and git log; reset to a clean default-branch base; carry over only intended fix changes; create branch fm/$ID; implement; report done>'"
+
+if [ "$KIND" = spec ] || [ "$KIND" = plan ]; then
+  echo "spec/plan report: $REPORT"
+  echo "next: FM_HOME=$HOME_Q bin/fm-send.sh fm-$ID '<ship instructions: load .agents/skills/spec-scaffold/SKILL.md and follow its commit-forward convention; read the spec/plan at $REPORT; review scratch state with git status and git log; reset to a clean default-branch base; carry over only intended fix changes; create branch fm/$ID; commit the spec content into the right doc per docs/specs/README.md; resolve or explicitly re-open every [NEEDS CLARIFICATION] marker; include Spec: <path> in --intent (no-mistakes) or commit message (local-only); implement; report done>'"
+else
+  echo "next: FM_HOME=$HOME_Q bin/fm-send.sh fm-$ID '<ship instructions: review scratch state with git status and git log; reset to a clean default-branch base; carry over only intended fix changes; create branch fm/$ID; implement; report done>'"
+fi
