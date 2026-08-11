@@ -19,8 +19,9 @@ unset HERDR_ENV HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID HERDR_SOCKET_PATH 
 TMP_ROOT=$(fm_test_tmproot fm-backend-herdr-workspace-race-tests)
 export FM_BACKEND_HERDR_SUBMIT_MIN_SLEEP=0
 
-# Verify flock is available (required for atomic state updates)
-command -v flock >/dev/null 2>&1 || { echo "skip: flock not available (required for atomic test)"; exit 0; }
+# For atomic state updates, we use mkdir for lock directories
+# which is atomic on both Linux and macOS (two processes cannot both
+# succeed in creating the same directory)
 
 # Create the stateful fake herdr (inline version from fm-backend-herdr.test.sh)
 make_herdr_statefake() {  # <dir> -> echoes fakebin dir; seeds an empty state file
@@ -38,18 +39,37 @@ STATE="${FM_FAKE_HERDR_STATE:?}"
   printf '\n'
 } >> "$LOG"
 
-# Atomic state operations with flock for true concurrent safety
+# Atomic state operations using directory-based locking (cross-platform)
+# mkdir is atomic: if two processes try to create the same directory,
+# only one succeeds and the other gets EEXIST
 jq_state() { jq "$@" "$STATE"; }
 
-# Atomic read-modify-write using flock (requires Linux/macOS flock support)
-# This ensures concurrent processes properly serialize access to the state file
+acquire_lock() {
+  local lockdir="$STATE.lockdir"
+  local max_wait=5 waited=0
+  while [ $waited -lt $max_wait ]; do
+    if mkdir "$lockdir" 2>/dev/null; then
+      echo "$lockdir"
+      return 0
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
+release_lock() {
+  rmdir "$1" 2>/dev/null || true
+}
+
+# Atomic read-modify-write using directory locks
 atomic_update() {  # <jq-update-expression>
-  local tmp="$STATE.tmp.$$"
-  local jq_expr="$1"
-  (
-    flock 9 || exit 1
-    jq "$jq_expr" "$STATE" > "$tmp" && mv "$tmp" "$STATE"
-  ) 9>"$STATE.lock"
+  local lockdir jq_expr tmp
+  lockdir=$(acquire_lock) || return 1
+  jq_expr="$1"
+  tmp="$STATE.tmp.$$"
+  jq "$jq_expr" "$STATE" > "$tmp" && mv "$tmp" "$STATE"
+  release_lock "$lockdir"
 }
 
 cmd=${1:-}; sub=${2:-}
