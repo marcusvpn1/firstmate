@@ -275,7 +275,9 @@ test_no_mistakes_dod_wording() {
   # guards the structure that makes it safe.
   assert_grep "firstmate's authority check" "$brief" \
     "no-mistakes DOD lost the apostrophe prose that the structural fix makes parse-safe"
-  pass "fm-brief.sh: no-mistakes DOD keeps its apostrophe prose, now parse-safe"
+  assert_grep "paused: awaiting captain merge decision on PR {url}" "$brief" \
+    "no-mistakes DOD must auto-declare a pause after done so the pane will not wedge-escalate while the captain decides"
+  pass "fm-brief.sh: no-mistakes DOD keeps its apostrophe prose and auto-pauses after done, now parse-safe"
 }
 
 test_ship_project_memory_wording() {
