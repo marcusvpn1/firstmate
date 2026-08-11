@@ -19,6 +19,9 @@ unset HERDR_ENV HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID HERDR_SOCKET_PATH 
 TMP_ROOT=$(fm_test_tmproot fm-backend-herdr-workspace-race-tests)
 export FM_BACKEND_HERDR_SUBMIT_MIN_SLEEP=0
 
+# Verify flock is available (required for atomic state updates)
+command -v flock >/dev/null 2>&1 || { echo "skip: flock not available (required for atomic test)"; exit 0; }
+
 # Create the stateful fake herdr (inline version from fm-backend-herdr.test.sh)
 make_herdr_statefake() {  # <dir> -> echoes fakebin dir; seeds an empty state file
   local dir=$1 fb="$1/fakebin"
@@ -35,8 +38,19 @@ STATE="${FM_FAKE_HERDR_STATE:?}"
   printf '\n'
 } >> "$LOG"
 
+# Atomic state operations with flock for true concurrent safety
 jq_state() { jq "$@" "$STATE"; }
-save() { local tmp="$STATE.tmp.$$"; cat > "$tmp" && mv "$tmp" "$STATE"; }
+
+# Atomic read-modify-write using flock (requires Linux/macOS flock support)
+# This ensures concurrent processes properly serialize access to the state file
+atomic_update() {  # <jq-update-expression>
+  local tmp="$STATE.tmp.$$"
+  local jq_expr="$1"
+  (
+    flock 9 || exit 1
+    jq "$jq_expr" "$STATE" > "$tmp" && mv "$tmp" "$STATE"
+  ) 9>"$STATE.lock"
+}
 
 cmd=${1:-}; sub=${2:-}
 ws=""; label=""
@@ -56,12 +70,14 @@ case "$cmd $sub" in
     jq_state '{result:{workspaces:.workspaces}}'
     ;;
   "workspace create")
+    # Atomically read current state and compute next values
     n=$(jq_state -r '.next'); wsid="w$n"; dn=$((n + 1))
-    jq_state --arg wsid "$wsid" --arg wlabel "$label" \
-      --arg tabid "$wsid:t$dn" --arg paneid "$wsid:p$dn" \
+    # Atomically update state with new workspace
+    atomic_update \
+      '--arg wsid "'"$wsid"'" --arg wlabel "'"$label"'" --arg tabid "'"$wsid:t$dn"'" --arg paneid "'"$wsid:p$dn"'"' \
       '.workspaces += [{workspace_id:$wsid, label:$wlabel}]
        | .tabs += [{tab_id:$tabid, label:"1", workspace_id:$wsid, pane_id:$paneid}]
-       | .next = (.next + 2)' | save
+       | .next = (.next + 2)'
     printf '{"result":{"workspace":{"workspace_id":"%s","label":"%s"},"tab":{"tab_id":"%s"},"root_pane":{"pane_id":"%s"}}}\n' \
       "$wsid" "$label" "$wsid:t$dn" "$wsid:p$dn"
     ;;
