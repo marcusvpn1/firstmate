@@ -533,6 +533,36 @@ fm_backend_herdr_presentation_session_lock_path() {  # <session>
   printf '%s/order-%s.lock' "$dir" "$key"
 }
 
+# fm_backend_herdr_workspace_lock_path: per-label workspace creation lock.
+# Session-scoped, not home-scoped, to serialize concurrent workspace
+# creation for the same label across different firstmate homes sharing a
+# Herdr session. Prevents the TOCTOU race in fm_backend_herdr_workspace_ensure
+# where two concurrent spawns both see 0 matches and both create a workspace
+# with the same label.
+fm_backend_herdr_workspace_lock_path() {  # <session> <label>
+  local session=$1 label=$2 hash dir
+  [ -n "$session" ] || return 1
+  [ -n "$label" ] || return 1
+  if command -v shasum >/dev/null 2>&1; then
+    hash=$(printf '%s\0%s' "$session" "$label" | shasum -a 256 2>/dev/null | awk '{print $1}')
+  elif command -v sha256sum >/dev/null 2>&1; then
+    hash=$(printf '%s\0%s' "$session" "$label" | sha256sum 2>/dev/null | awk '{print $1}')
+  else
+    return 1
+  fi
+  [ -n "$hash" ] || return 1
+  local key=${hash:0:32}
+  dir=$(fm_backend_herdr_presentation_lock_namespace) || return 1
+  [ -n "$dir" ] || return 1
+  if [ ! -e "$dir" ] && [ ! -L "$dir" ]; then
+    if ! mkdir -m 700 "$dir" 2>/dev/null; then
+      fm_backend_herdr_presentation_lock_namespace_valid "$dir" || return 1
+    fi
+  fi
+  fm_backend_herdr_presentation_lock_namespace_valid "$dir" || return 1
+  printf '%s/workspace-%s.lock' "$dir" "$key"
+}
+
 # fm_backend_herdr_projection_focus_snapshot: print the exact active
 # workspace and tab ids as one tab-separated record.
 # Presentation mutations use this read-only snapshot as their sole focus
@@ -1537,7 +1567,51 @@ fm_backend_herdr_workspace_ensure() {  # <session> <cwd> [<launcher-relationship
     printf '%s' "$wsid"
     return 0
   fi
-  out=$(fm_backend_herdr_cli "$session" workspace create --cwd "$cwd" --label "$label" --no-focus 2>/dev/null) || return 1
+
+  # Double-checked locking: acquire a per-label lock to prevent the TOCTOU race
+  # where two concurrent spawns both see 0 matches and both create a workspace.
+  # See data/fm-herdr-concurrent-spawn-cross-contamination/report.md for the
+  # full race analysis and recommended fix.
+  local ws_lock attempt=0 lock_held=0
+  if ! declare -F fm_lock_try_acquire >/dev/null 2>&1; then
+    # shellcheck source=bin/fm-wake-lib.sh
+    . "$FM_BACKEND_HERDR_ROOT/bin/fm-wake-lib.sh"
+  fi
+  ws_lock=$(fm_backend_herdr_workspace_lock_path "$session" "$label") || return 1
+  while [ "$attempt" -lt 50 ]; do
+    if fm_lock_try_acquire "$ws_lock"; then
+      lock_held=1
+      break
+    fi
+    sleep 0.1
+    attempt=$((attempt + 1))
+  done
+  if [ "$lock_held" != 1 ]; then
+    return 1
+  fi
+
+  # Re-check under the lock: another caller may have created the workspace
+  # while we were waiting for the lock.
+  matches=$(fm_backend_herdr_workspace_find_all "$session")
+  count=$(printf '%s' "$matches" | grep -c '[^[:space:]]' || true)
+  if [ "$count" -gt 1 ]; then
+    fm_lock_release "$ws_lock" || true
+    echo "error: ${count} herdr workspaces in session '$session' are labeled '$label' (${matches//$'\n'/ }) and this spawn has no herdr parent pane to identify which one is its own; rename or close the extras, or run firstmate inside the workspace its workers belong in" >&2
+    return 3
+  fi
+  wsid=${matches%%$'\n'*}
+  if [ -n "$wsid" ]; then
+    FM_BACKEND_HERDR_WS_ID=$wsid
+    fm_lock_release "$ws_lock" || true
+    printf '%s' "$wsid"
+    return 0
+  fi
+
+  # Still not found under the lock: safe to create
+  out=$(fm_backend_herdr_cli "$session" workspace create --cwd "$cwd" --label "$label" --no-focus 2>/dev/null)
+  local create_status=$?
+  fm_lock_release "$ws_lock" || true
+  [ "$create_status" -eq 0 ] || return 1
   wsid=$(printf '%s' "$out" | jq -r '.result.workspace.workspace_id // empty' 2>/dev/null)
   [ -n "$wsid" ] || return 1
   FM_BACKEND_HERDR_WS_ID=$wsid
