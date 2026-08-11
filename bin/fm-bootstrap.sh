@@ -438,6 +438,9 @@ secondmate_liveness_sweep() {
   # Secondmate homes never contain kind=secondmate meta, so this is naturally a
   # primary-only no-op there. Mid-session liveness remains explicitly out of
   # scope and requires a separate periodic signal.
+  # Also cross-references data/secondmates.md entries against state/*.meta files
+  # (both directions) and surfaces registry-meta mismatches as actionable
+  # SECONDMATE_LIVENESS diagnostics. Bootstrap never auto-fixes a mismatch.
   [ -d "$STATE" ] || return 0
   local meta id window harness backend target agent_state out cause
   SECONDMATE_RESPAWNED_IDS=""
@@ -494,6 +497,45 @@ secondmate_liveness_sweep() {
         ;;
     esac
   done
+
+  # Cross-reference: registry ↔ meta consistency.
+  # Every data/secondmates.md entry needs a matching state/<id>.meta with
+  # kind=secondmate; every such meta needs a matching registry entry.
+  # Mismatches are surfaced as actionable diagnostics; bootstrap never
+  # auto-fixes them — the captain decides whether to register an orphan or
+  # clean up a stale registry entry.
+  local reg="$DATA/secondmates.md"
+  local meta_ids="" reg_ids="" reg_id
+  for meta in "$STATE"/*.meta; do
+    [ -f "$meta" ] || continue
+    grep -q '^kind=secondmate$' "$meta" 2>/dev/null || continue
+    meta_ids="$meta_ids $(basename "$meta" .meta)"
+  done
+  meta_ids="${meta_ids# }"
+  if [ -f "$reg" ] && [ ! -L "$reg" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        "- "*)
+          if secondmate_registry_parse_line "$line"; then
+            reg_id=$SECONDMATE_REGISTRY_ID
+            reg_ids="$reg_ids $reg_id"
+            case " $meta_ids " in
+              *" $reg_id "*) ;;
+              *) echo "SECONDMATE_LIVENESS: secondmate $reg_id: skipped: registered in data/secondmates.md but no matching meta file — was it launched?" ;;
+            esac
+          fi
+          ;;
+      esac
+    done < "$reg"
+    reg_ids="${reg_ids# }"
+    for meta_id in $meta_ids; do
+      case " $reg_ids " in
+        *" $meta_id "*) ;;
+        *) echo "SECONDMATE_LIVENESS: secondmate $meta_id: skipped: meta file exists but no matching data/secondmates.md registry entry — orphaned?" ;;
+      esac
+    done
+  fi
+
   return 0
 }
 
