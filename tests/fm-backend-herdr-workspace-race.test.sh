@@ -62,14 +62,18 @@ release_lock() {
   rmdir "$1" 2>/dev/null || true
 }
 
-# Atomic read-modify-write using directory locks
-atomic_update() {  # <jq-update-expression>
-  local lockdir jq_expr tmp
+# Atomic read-modify-write using directory locks.
+# Takes multiple arguments exactly as they should be passed to jq:
+#   --arg name value ... 'filter expression'
+# All arguments are forwarded verbatim to jq, so the filter can span multiple lines.
+atomic_update() {
+  local lockdir tmp rc
   lockdir=$(acquire_lock) || return 1
-  jq_expr="$1"
   tmp="$STATE.tmp.$$"
-  jq "$jq_expr" "$STATE" > "$tmp" && mv "$tmp" "$STATE"
+  jq "$@" "$STATE" > "$tmp" && mv "$tmp" "$STATE"
+  rc=$?
   release_lock "$lockdir"
+  return $rc
 }
 
 cmd=${1:-}; sub=${2:-}
@@ -94,7 +98,10 @@ case "$cmd $sub" in
     n=$(jq_state -r '.next'); wsid="w$n"; dn=$((n + 1))
     # Atomically update state with new workspace
     atomic_update \
-      '--arg wsid "'"$wsid"'" --arg wlabel "'"$label"'" --arg tabid "'"$wsid:t$dn"'" --arg paneid "'"$wsid:p$dn"'"' \
+      --arg wsid "$wsid" \
+      --arg wlabel "$label" \
+      --arg tabid "$wsid:t$dn" \
+      --arg paneid "$wsid:p$dn" \
       '.workspaces += [{workspace_id:$wsid, label:$wlabel}]
        | .tabs += [{tab_id:$tabid, label:"1", workspace_id:$wsid, pane_id:$paneid}]
        | .next = (.next + 2)'
