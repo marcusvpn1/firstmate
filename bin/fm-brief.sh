@@ -468,8 +468,7 @@ Two firstmate-specific rules layer on top of that guidance:
   When the decision comes back, feed it to the gate with \`no-mistakes axi respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
 - Avoid \`--yes\`: it would silently bypass firstmate's authority check and any required captain escalation.
 
-After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop.
-Next, append \`${PAUSED_VERB}: awaiting captain merge decision on PR {url}\` so the pane will not wedge-escalate while the captain decides. You are finished.
+After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\`, then append \`${PAUSED_VERB}: awaiting captain merge decision on PR {url}\` so the pane will not wedge-escalate while the captain decides, and stop. You are finished.
 EOF
     ;;
 esac
