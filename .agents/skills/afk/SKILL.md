@@ -251,3 +251,6 @@ These properties must hold:
 `FM_INJECT_SKIP` (default `heartbeat`) force-self-handles matching kinds,
 overriding classification.
 Use it sparingly.
+
+**Known limitation on the Claude harness:** its native tracked-background-task hosting cycles the daemon's process roughly every 30-45 minutes on its own, independent of the daemon's own state, and needs a manual relaunch each time during a long away-mode stretch.
+Nothing is lost across the gap - the reliability properties above hold across it - but see `harness-adapters` (claude section) for the verified evidence and the exact recovery command.

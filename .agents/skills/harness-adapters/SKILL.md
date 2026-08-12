@@ -203,6 +203,13 @@ A project-level `.claude/settings.json` only takes effect when Claude Code's pro
 After those settings are loaded, hook command resolution is still cwd-sensitive because Claude Code runs commands through `/bin/sh` against the session's current cwd; keep the tracked commands anchored through `"$CLAUDE_PROJECT_DIR"/bin/...` and see `docs/turnend-guard.md` for the verified Stop-hook details.
 Claude Code's primary watcher protocol is Stop-owned: the auto-arm hook fires on every Stop and foregrounds `bin/fm-watch-arm.sh` when the home is eligible and still needs supervision, and its exit-2 `asyncRewake` rewake is the wake; the model drains and handles wakes but never runs a routine re-arm command.
 
+**Known limitation: native tracked-background daemon lifetime (observed 2026-08-11, three times in one session).**
+Away mode's sub-supervisor daemon (`bin/fm-supervise-daemon.sh`) is launched under Claude through the harness's own native tracked-background-task tool (`bin/fm-afk-launch.sh start-native` then `FM_AFK_STATE_PREPARED=1 bin/fm-afk-start.sh` via that tool), which is a deliberate design choice - see the no-shell-`&` warning in `bin/fm-afk-launch.sh`.
+That native background-task hosting itself gets cycled by harness/session infrastructure roughly every 30-45 minutes, independent of the daemon's own composer-guard or max-defer state: the daemon's log shows a clean, normal signal-trapped `daemon shutting down` (not a crash or an internal self-exit - confirmed by reading `fm-supervise-daemon.sh`, whose only exit paths are startup-validation failures and the `TERM`/`INT`-trapped `cleanup()`), and the harness reports the background task's own status as `killed` rather than `completed`-with-error.
+Nothing is lost across the gap (the durable wake queue and `fm-wake-drain.sh` recover it, per Reliability properties in the `/afk` skill), but away mode currently needs a manual relaunch roughly every 30-45 minutes for the duration of a long away-mode stretch: verify `state/.afk` is still present and the daemon log's last line is a clean `daemon shutting down`, then rerun `FM_AFK_STATE_PREPARED=1 bin/fm-afk-start.sh` through the harness's native background-task tool.
+Not yet root-caused further than "a lifetime cap on this harness's native background-task hosting infrastructure" and not reproduced on any other harness's away-mode launch path.
+A more durable fix would extend the Stop-hook `asyncRewake` continuity pattern above (which the away-mode daemon does not currently use at all - the autoarm hook exits immediately whenever `state/.afk` exists) to also cover away-mode daemon liveness, but that is unscoped follow-up work, not a small change.
+
 ## codex (VERIFIED 2026-06-11, codex-cli 0.139.0)
 
 | Fact | Value |
