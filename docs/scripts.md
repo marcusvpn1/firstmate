@@ -101,3 +101,5 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-public-followup-lib.sh` | Shared relay-activation gate, O(1) presence checks, and private transport paths for promised public replies |
 | `fm-public-followup.sh`  | Reconcile typed terminal work results into a public commitment and deliver its final reply once |
 | `fm-public-followup-emit.sh` | Report one typed terminal work result into the home that owes the public reply    |
+| `fm-reply-capture-claude.sh` | Claude Stop-hook adapter that writes a corr-tagged voice reply record (Claude only; see its header for the record format and compatibility limits) |
+| `fm-reply-capture-lib.sh` | Write firstmate's conversational reply for a corr-tagged external turn to `state/voice-replies/<corr>`; owns the corr-token contract reuse and atomic record write (see its header) |
