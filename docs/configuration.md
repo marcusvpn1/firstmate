@@ -193,6 +193,7 @@ The full cmux home label also includes a short hash of the resolved `FM_ROOT` pa
 ## Harness support
 
 claude, codex, opencode, pi, pi-signed, grok, and kimi are empirically verified for crewmate and secondmate launches; agy is empirically verified for crewmate launches only (no secondmate support, experimental) - [README requirements](../README.md#requirements) own the set supported for the primary session.
+`pi-qwen-alienware` is an opt-in, scout-only experimental adapter for a one-shot local-Qwen run and is not a primary or secondmate harness.
 New harnesses get verified through a supervised trial task before joining the set.
 The verified adapter knowledge - each harness's busy-state source, interrupt and exit commands, skill-invocation syntax, and per-harness quirks - lives in [`.agents/skills/harness-adapters/SKILL.md`](../.agents/skills/harness-adapters/SKILL.md).
 Launch mechanics, including the verified command templates, live in [`bin/fm-spawn.sh`](../bin/fm-spawn.sh).
@@ -202,6 +203,8 @@ Primary-session watcher wake protocols are rendered at session start by [`bin/fm
 Claude's Stop `asyncRewake` hook owns tokenless re-arm cycles, Grok uses background-notify cycles, Codex uses bounded foreground checkpoints, Pi and pi-signed use the same two tracked primary extensions, and OpenCode uses its TUI plugin.
 `config/crew-harness` is a local, gitignored file containing one adapter name for crewmate and scout launches.
 When pi-signed is selected, Firstmate launches the executable named `pi-signed` from `PATH` with `FM_PI_HARNESS=pi-signed` and refuses the launch if it is unavailable rather than falling back to pi.
+When `pi-qwen-alienware` is explicitly selected for a scout, Firstmate runs `bin/fm-pi-qwen-alienware.py`, records the provider-qualified model, denies shell tools and worktree writes, permits only the worker-only localhost Ollama route, enforces a hard deadline, and writes `data/<task>/run-record.json`.
+The adapter refuses ship and secondmate launches and never changes the default crew route.
 Plain Pi launches set `FM_PI_HARNESS=pi`, so a signed primary's environment cannot relabel a plain Pi worker.
 When it is absent or contains `default`, crewmates mirror the firstmate's own harness.
 `config/secondmate-harness` is a separate local, gitignored file containing the adapter the primary uses to launch secondmate agents, optionally followed by model and effort tokens on the same line.

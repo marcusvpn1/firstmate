@@ -1,6 +1,6 @@
 ---
 name: harness-adapters
-description: Agent-only reference for firstmate harness operations. Use before spawning or recovering a crewmate or secondmate, handling a trust dialog, sending a harness-specific skill invocation, interrupting or exiting an agent, resuming an exited agent, or verifying a new harness adapter. Contains verified facts for claude, codex, opencode, pi, pi-signed, grok, kimi, and agy.
+description: Agent-only reference for firstmate harness operations. Use before spawning or recovering a crewmate or secondmate, handling a trust dialog, sending a harness-specific skill invocation, interrupting or exiting an agent, resuming an exited agent, or verifying a new harness adapter. Contains verified facts for claude, codex, opencode, pi, pi-signed, pi-qwen-alienware, grok, kimi, and agy.
 user-invocable: false
 metadata:
   internal: true
@@ -310,6 +310,14 @@ Pi's primary watcher protocol also requires the tracked `.pi/extensions/fm-prima
 The model arms through `fm_watch_arm_pi`, never a foreground bash arm; the watcher tool result and clean-exit fallback are owned by `docs/supervision-protocols/pi.md`.
 `bin/fm-session-start.sh` reports when the live Pi-family session has not loaded both the turn-end guard and watcher extensions, and points at the selected executable after project trust as the fix, with `-e` as a trust-free fallback.
 When a secondmate is launched on Pi or pi-signed, `fm-spawn.sh --secondmate` launches the selected executable with both `-e .pi/extensions/fm-primary-turnend-guard.ts` and `-e .pi/extensions/fm-primary-pi-watch.ts`, both already present in the secondmate home's git worktree.
+
+## pi-qwen-alienware (EXPERIMENTAL 2026-08-17)
+
+This is a one-shot scout adapter, not an interactive Pi-family primary or secondmate harness.
+Select it explicitly with `--scout --harness pi-qwen-alienware --model ollama-alienware/qwen3:8b` while the worker-only SSH tunnel is available on localhost port 21434.
+`bin/fm-pi-qwen-alienware.py` owns the deny-default sandbox, scrubbed environment, tool allowlist, 300-second default process-group deadline, report-only durable write boundary, and structured run record.
+It refuses ship launches, exposes no shell tool, requires a clean worktree after completion, and reports failure when the report is absent.
+Do not recover it as an interactive Pi pane; inspect `data/<task>/run-record.json`, the task status, and the durable report instead.
 
 ## grok (VERIFIED 2026-06-29, grok 0.2.73; slash-submit re-verified 2026-07-03 on 0.2.82; reasoning-effort ceiling re-verified 2026-07-13 on 0.2.99; exit paths re-verified 2026-07-19 on grok 0.2.103)
 

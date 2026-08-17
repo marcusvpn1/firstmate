@@ -560,6 +560,69 @@ test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata() {
   pass "pi-signed refuses safely and actionably when the selected executable is unavailable"
 }
 
+test_pi_qwen_alienware_scout_is_opt_in_and_bounded() {
+  local rec id out status launch
+  id=profile-pi-qwen-scout-z8e
+  rec=$(make_spawn_case profile-pi-qwen-scout pi "$id")
+  read_case_record "$rec"
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --scout --harness pi-qwen-alienware --model ollama-alienware/qwen3:8b)
+  status=$?
+  expect_code 0 "$status" "bounded local-Qwen scout spawn should succeed"
+  assert_contains "$out" "spawned $id harness=pi-qwen-alienware kind=scout" \
+    "bounded local-Qwen scout did not preserve its explicit identity"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" pi-qwen-alienware ollama-alienware/qwen3:8b default
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "/usr/bin/python3 '$ROOT/bin/fm-pi-qwen-alienware.py'" \
+    "bounded local-Qwen scout did not use its enforced runner"
+  assert_contains "$launch" "--worktree \"\$PWD\"" \
+    "bounded local-Qwen scout did not bind its actual worktree"
+  assert_contains "$launch" "--report '$HOME_DIR/data/$id/report.md'" \
+    "bounded local-Qwen scout did not bind its sole durable report"
+  assert_contains "$launch" "--run-record '$HOME_DIR/data/$id/run-record.json'" \
+    "bounded local-Qwen scout did not bind its structured run record"
+  assert_contains "$launch" "--model 'ollama-alienware/qwen3:8b'" \
+    "bounded local-Qwen scout lost provider/model provenance"
+  assert_not_contains "$launch" " -e " \
+    "one-shot bounded local-Qwen scout unexpectedly loaded interactive Pi extensions"
+  pass "pi-qwen-alienware is an explicit scout-only bounded launch"
+}
+
+test_pi_qwen_alienware_refuses_ship() {
+  local rec id out status
+  id=profile-pi-qwen-ship-z8f
+  rec=$(make_spawn_case profile-pi-qwen-ship pi "$id")
+  read_case_record "$rec"
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --harness pi-qwen-alienware --model ollama-alienware/qwen3:8b)
+  status=$?
+  expect_code 1 "$status" "bounded local-Qwen ship spawn should refuse"
+  assert_contains "$out" "pi-qwen-alienware is experimental and supports --scout only" \
+    "bounded local-Qwen ship refusal was not explicit"
+  [ ! -s "$LAUNCH_LOG" ] || fail "bounded local-Qwen ship refusal typed a launch command"
+  assert_absent "$HOME_DIR/state/$id.meta" "bounded local-Qwen ship refusal wrote task metadata"
+  pass "pi-qwen-alienware refuses ship jobs before launch (Phase 2 ship gate failed twice, D-025; retired to scout-only)"
+}
+
+test_pi_qwen_alienware_requires_explicit_model() {
+  local rec id out status
+  id=profile-pi-qwen-model-z8g
+  rec=$(make_spawn_case profile-pi-qwen-model pi "$id")
+  read_case_record "$rec"
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --scout --harness pi-qwen-alienware)
+  status=$?
+  expect_code 1 "$status" "bounded local-Qwen scout without a model should refuse"
+  assert_contains "$out" "requires an explicit provider-qualified --model" \
+    "bounded local-Qwen missing-model refusal was not explicit"
+  [ ! -s "$LAUNCH_LOG" ] || fail "bounded local-Qwen missing-model refusal typed a launch command"
+  assert_absent "$HOME_DIR/state/$id.meta" "bounded local-Qwen missing-model refusal wrote task metadata"
+  pass "pi-qwen-alienware refuses ambiguous model identity before launch"
+}
+
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity() {
   local rec id sm out status launch
   id=profile-pi-signed-secondmate-z8d
@@ -688,6 +751,9 @@ test_opencode_threads_model_and_ignores_effort_axis
 test_pi_threads_model_and_max_effort
 test_pi_signed_threads_shared_pi_profile_and_preserves_identity
 test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata
+test_pi_qwen_alienware_scout_is_opt_in_and_bounded
+test_pi_qwen_alienware_refuses_ship
+test_pi_qwen_alienware_requires_explicit_model
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity
 test_batch_forwards_shared_profile_flags
 test_claude_forwards_firstmate_config_dir_when_set

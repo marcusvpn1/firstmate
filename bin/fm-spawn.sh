@@ -70,7 +70,7 @@
 #   profile consultation. A --secondmate spawn is exempt and resolves the SECONDMATE
 #   harness (config/secondmate-harness -> config/crew-harness -> own), so the
 #   secondmate-vs-crewmate split is DURABLE across every respawn (recovery,
-#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|agy)
+#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|agy)
 #   overrides it for this spawn (either kind). A non-flag string containing
 #   whitespace is treated as a RAW launch command - the escape hatch for verifying
 #   new adapters. pi-signed launches that exact executable name from PATH and
@@ -121,6 +121,12 @@
 #     __PITURNEND__ absolute path to .pi/extensions/fm-primary-turnend-guard.ts in a pi secondmate home
 #     __PIWATCH__   absolute path to .pi/extensions/fm-primary-pi-watch.ts in a pi secondmate home
 #     __OPINPUT__   absolute path to the canonical operational-input encoder
+#     __FMLOCAL__   absolute path to the bounded pi-qwen-alienware runner
+#     __REPORT__    absolute path to data/<task-id>/report.md
+#     __STATUS__    absolute path to state/<task-id>.status
+#     __RUNRECORD__ absolute path to data/<task-id>/run-record.json
+#     __TASKTMP__   absolute per-task temporary directory
+#     __ID__        validated task identifier
 # Verified per-harness turn-end hooks are installed automatically where enabled; some live outside the worktree.
 # Kimi uses one surgically installed Firstmate region in $HOME/.kimi-code/config.toml,
 # a firstmate-owned global hook and registry, and a gitignored per-task pointer.
@@ -433,7 +439,7 @@ FIRSTMATE_HOME=
 
 if [ "$KIND" = secondmate ]; then
   case "${POS[1]:-}" in
-    ''|claude|codex|opencode|pi|pi-signed|grok|kimi|agy)
+    ''|claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|agy)
       ARG3=${POS[1]:-}
       ;;
     *' '*)
@@ -485,6 +491,16 @@ launch_template() {
       else
         printf '%s%s' "$harness" ' __MODELFLAG____EFFORTFLAG__-e __PIEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
       fi
+      ;;
+    pi-qwen-alienware)
+      case "$kind" in
+        scout|ship)
+          printf '%s%s%s' '/usr/bin/python3 __FMLOCAL__ --id __ID__ --worktree "$PWD" --brief __BRIEF__ --report __REPORT__ --status __STATUS__ --run-record __RUNRECORD__ --task-tmp __TASKTMP__ --kind ' "$kind" ' __MODELFLAG__'"${FM_PI_QWEN_TOOLCALL_FALLBACK:+ --tool-call-fallback}"
+          ;;
+        *)
+          printf ':'
+          ;;
+      esac
       ;;
     # grok (Grok Build TUI): a positional prompt starts the supervised interactive
     # session. --always-approve auto-approves every tool execution (verified: the
@@ -550,6 +566,23 @@ case "$ARG3" in
     LAUNCH=$(launch_template "$HARNESS" "$KIND") || { echo "error: unknown harness '$HARNESS'; pass a raw launch command to use an unverified adapter" >&2; exit 1; }
     ;;
 esac
+
+# bin/fm-pi-qwen-alienware.py's --kind ship support (added and tested for the
+# local-ai-server RUNBOOK.md Phase 2 ship-job pilot, 2026-08-17) stays dormant
+# here on purpose: the pilot ran twice against the runbook's own canonical
+# task and failed both times on the real test-execution/verification step
+# (local-ai-server D-025), so the lane was retired to scout-only rather than
+# promoted. The python adapter's ship logic is left in place, tested, as
+# evidence and for a possible future revisit; this gate is what actually
+# keeps it unreachable from ordinary dispatch.
+if [ "$HARNESS" = pi-qwen-alienware ] && [ "$KIND" != scout ]; then
+  echo "error: pi-qwen-alienware is experimental and supports --scout only" >&2
+  exit 1
+fi
+if [ "$HARNESS" = pi-qwen-alienware ] && { [ -z "$MODEL" ] || [ "$MODEL" = default ]; }; then
+  echo "error: pi-qwen-alienware requires an explicit provider-qualified --model" >&2
+  exit 1
+fi
 
 case "$HARNESS" in
   pi|pi-signed) LAUNCH="FM_PI_HARNESS=$HARNESS $LAUNCH" ;;
@@ -623,7 +656,7 @@ model_flag_for_harness() {
   local harness=$1 model=$2
   [ -n "$model" ] && [ "$model" != default ] || return 0
   case "$harness" in
-    claude|codex|opencode|pi|pi-signed|grok|kimi|agy)
+    claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|agy)
       printf -- '--model %s ' "$(shell_quote "$model")"
       ;;
   esac
@@ -1814,6 +1847,12 @@ sq_piext=$(shell_quote "$STATE/$ID.pi-ext.ts")
 sq_piturnend=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-turnend-guard.ts")
 sq_piwatch=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-pi-watch.ts")
 sq_opinput=$(shell_quote "$FM_ROOT/bin/fm-operational-input.sh")
+sq_fmlocal=$(shell_quote "$FM_ROOT/bin/fm-pi-qwen-alienware.py")
+sq_report=$(shell_quote "$DATA/$ID/report.md")
+sq_status=$(shell_quote "$STATE/$ID.status")
+sq_runrecord=$(shell_quote "$DATA/$ID/run-record.json")
+sq_tasktmp=$(shell_quote "$TASK_TMP")
+sq_id=$(shell_quote "$ID")
 MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT")
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
@@ -1824,6 +1863,12 @@ LAUNCH=${LAUNCH//__PIEXT__/$sq_piext}
 LAUNCH=${LAUNCH//__PITURNEND__/$sq_piturnend}
 LAUNCH=${LAUNCH//__PIWATCH__/$sq_piwatch}
 LAUNCH=${LAUNCH//__OPINPUT__/$sq_opinput}
+LAUNCH=${LAUNCH//__FMLOCAL__/$sq_fmlocal}
+LAUNCH=${LAUNCH//__REPORT__/$sq_report}
+LAUNCH=${LAUNCH//__STATUS__/$sq_status}
+LAUNCH=${LAUNCH//__RUNRECORD__/$sq_runrecord}
+LAUNCH=${LAUNCH//__TASKTMP__/$sq_tasktmp}
+LAUNCH=${LAUNCH//__ID__/$sq_id}
 # Crewmate panes are created by a long-lived tmux/herdr daemon that does not
 # inherit firstmate's current environment, so a bare `claude` in the pane falls
 # back to the default ~/.claude store even when firstmate itself runs under a
