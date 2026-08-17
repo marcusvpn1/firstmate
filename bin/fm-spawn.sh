@@ -122,7 +122,7 @@
 #   profile consultation. A --secondmate spawn is exempt and resolves the SECONDMATE
 #   harness (config/secondmate-harness -> config/crew-harness -> own), so the
 #   secondmate-vs-crewmate split is DURABLE across every respawn (recovery,
-#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp)
+#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|cursor|gemini|muse|rovo|omp)
 #   overrides it for this spawn (either kind). A non-flag string containing
 #   whitespace is treated as a RAW launch command - the escape hatch for verifying
 #   new adapters. For pi and pi-signed, fm-spawn resolves the selected executable
@@ -258,6 +258,12 @@
 #     __CURSORBIN__ resolved, cursor-verified executable for a cursor launch
 #     __GEMINISETTINGS__ firstmate-owned per-task gemini settings file (busy-state hooks)
 #     __ROVOBIN__   resolved, rovo-verified executable for a rovo launch
+#     __FMLOCAL__   absolute path to the bounded pi-qwen-alienware runner
+#     __REPORT__    absolute path to data/<task-id>/report.md
+#     __STATUS__    absolute path to state/<task-id>.status
+#     __RUNRECORD__ absolute path to data/<task-id>/run-record.json
+#     __TASKTMP__   absolute per-task temporary directory
+#     __ID__        validated task identifier
 # Verified per-harness turn-end hooks are installed automatically where enabled; some live outside the worktree.
 # Kimi uses one surgically installed Firstmate region in $HOME/.kimi-code/config.toml,
 # a firstmate-owned global hook and registry, and a gitignored per-task pointer.
@@ -521,6 +527,15 @@ case "$EFFORT" in
   ''|low|medium|high|xhigh|max) ;;
   *) echo "error: --effort must be one of low, medium, high, xhigh, max" >&2; exit 1 ;;
 esac
+
+# pi-qwen-alienware is a scout-only adapter: refuse an explicit non-scout spawn
+# before the ship --mode requirement, so a ship spawn sees the scout-only
+# refusal rather than a missing-mode error. A --relaunch never carries an
+# explicit --harness, so this early gate is inert there.
+if [ "$HARNESS_ARG" = pi-qwen-alienware ] && [ "$KIND" != scout ]; then
+  echo "error: pi-qwen-alienware is experimental and supports --scout only" >&2
+  exit 1
+fi
 
 # --relaunch reuses an existing task's endpoint, worktree, project, and kind,
 # so every axis this block resolves for a fresh spawn instead comes from that
@@ -1317,7 +1332,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   }
 elif [ "$KIND" = secondmate ]; then
   case "${POS[1]:-}" in
-    ''|claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp)
+    ''|claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|cursor|gemini|muse|rovo|omp)
       ARG3=${POS[1]:-}
       ;;
     *' '*)
@@ -1464,6 +1479,16 @@ launch_template() {
       else
         printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __OMPEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
       fi
+      ;;
+    pi-qwen-alienware)
+      case "$kind" in
+        scout|ship)
+          printf '%s%s%s' '/usr/bin/python3 __FMLOCAL__ --id __ID__ --worktree "$PWD" --brief __BRIEF__ --report __REPORT__ --status __STATUS__ --run-record __RUNRECORD__ --task-tmp __TASKTMP__ --kind ' "$kind" ' __MODELFLAG__'"${FM_PI_QWEN_TOOLCALL_FALLBACK:+ --tool-call-fallback}"
+          ;;
+        *)
+          printf ':'
+          ;;
+      esac
       ;;
     # grok (Grok Build TUI): a positional prompt starts the supervised interactive
     # session. --always-approve auto-approves every tool execution (verified: the
@@ -1628,6 +1653,23 @@ esac
 # secondmate whose supervision cycle could never be armed.
 if [ "$KIND" = secondmate ] && { [ "$HARNESS" = muse ] || [ "$HARNESS" = gemini ]; }; then
   echo "error: $HARNESS is a verified crewmate/scout adapter only and cannot run a secondmate; it has no primary supervision protocol. Select a harness verified for secondmates." >&2
+  exit 1
+fi
+
+# bin/fm-pi-qwen-alienware.py's --kind ship support (added and tested for the
+# local-ai-server RUNBOOK.md Phase 2 ship-job pilot, 2026-08-17) stays dormant
+# here on purpose: the pilot ran twice against the runbook's own canonical
+# task and failed both times on the real test-execution/verification step
+# (local-ai-server D-025), so the lane was retired to scout-only rather than
+# promoted. The python adapter's ship logic is left in place, tested, as
+# evidence and for a possible future revisit; this gate is what actually
+# keeps it unreachable from ordinary dispatch.
+if [ "$HARNESS" = pi-qwen-alienware ] && [ "$KIND" != scout ]; then
+  echo "error: pi-qwen-alienware is experimental and supports --scout only" >&2
+  exit 1
+fi
+if [ "$HARNESS" = pi-qwen-alienware ] && { [ -z "$MODEL" ] || [ "$MODEL" = default ]; }; then
+  echo "error: pi-qwen-alienware requires an explicit provider-qualified --model" >&2
   exit 1
 fi
 
@@ -1818,7 +1860,7 @@ model_flag_for_harness() {
   local harness=$1 model=$2
   [ -n "$model" ] && [ "$model" != default ] || return 0
   case "$harness" in
-    claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp)
+    claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|cursor|gemini|muse|rovo|omp)
       printf -- '--model %s ' "$(shell_quote "$model")"
       ;;
   esac
@@ -3718,6 +3760,12 @@ sq_ompext=$(shell_quote "$STATE/$ID.omp-ext.ts")
 sq_ompcfg=$(shell_quote "${OMP_WORKER_CFG:-$FM_ROOT/.omp/fm-worker-overlay.yml}")
 sq_opinput=$(shell_quote "$FM_ROOT/bin/fm-operational-input.sh")
 sq_worktree=$(shell_quote "$WT")
+sq_fmlocal=$(shell_quote "$FM_ROOT/bin/fm-pi-qwen-alienware.py")
+sq_report=$(shell_quote "$DATA/$ID/report.md")
+sq_status=$(shell_quote "$STATE/$ID.status")
+sq_runrecord=$(shell_quote "$DATA/$ID/run-record.json")
+sq_tasktmp=$(shell_quote "$TASK_TMP")
+sq_id=$(shell_quote "$ID")
 MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT")
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
@@ -3749,6 +3797,12 @@ case "$HARNESS" in
     LAUNCH="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI $LAUNCH"
     ;;
 esac
+LAUNCH=${LAUNCH//__FMLOCAL__/$sq_fmlocal}
+LAUNCH=${LAUNCH//__REPORT__/$sq_report}
+LAUNCH=${LAUNCH//__STATUS__/$sq_status}
+LAUNCH=${LAUNCH//__RUNRECORD__/$sq_runrecord}
+LAUNCH=${LAUNCH//__TASKTMP__/$sq_tasktmp}
+LAUNCH=${LAUNCH//__ID__/$sq_id}
 # Crewmate panes are created by a long-lived tmux/herdr daemon that does not
 # inherit firstmate's current environment, so a bare `claude` in the pane falls
 # back to the default ~/.claude store even when firstmate itself runs under a

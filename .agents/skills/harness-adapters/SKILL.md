@@ -3,7 +3,7 @@ name: harness-adapters
 description: >-
   Agent-only reference for firstmate harness operations.
   Use before spawning or recovering a crewmate or secondmate, handling a trust dialog, sending a harness-specific skill invocation, interrupting or exiting an agent, resuming an exited agent, or verifying a new harness adapter.
-  Contains verified facts for claude, codex, opencode, pi, pi-signed, grok, kimi, cursor, gemini, muse, rovo, and omp.
+  Contains verified facts for claude, codex, opencode, pi, pi-signed, pi-qwen-alienware, grok, kimi, cursor, gemini, muse, rovo, and omp.
 user-invocable: false
 metadata:
   internal: true
@@ -136,3 +136,11 @@ The index artifact (`.codebase-memory/graph.db.zst`) is gitignored and cached un
 Each tool shells out to `codebase-memory-mcp cli <tool>` and returns JSON.
 The project ID is resolved once per session from `list_projects` matching the current cwd.
 Error output (the `level=info msg=mem.init` line on stderr) is suppressed.
+
+## pi-qwen-alienware (EXPERIMENTAL 2026-08-17)
+
+This is a one-shot scout adapter, not an interactive Pi-family primary or secondmate harness.
+Select it explicitly with `--scout --harness pi-qwen-alienware --model ollama-alienware/qwen3:8b` while the worker-only SSH tunnel is available on localhost port 21434.
+`bin/fm-pi-qwen-alienware.py` owns the deny-default sandbox, scrubbed environment, tool allowlist, 300-second default process-group deadline, report-only durable write boundary, and structured run record.
+It refuses ship launches, exposes no shell tool, requires a clean worktree after completion, and reports failure when the report is absent.
+Do not recover it as an interactive Pi pane; inspect `data/<task>/run-record.json`, the task status, and the durable report instead.
