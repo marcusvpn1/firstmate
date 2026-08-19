@@ -398,6 +398,14 @@ The skill owns the daemon procedure; these safety facts remain inline:
 
 Load `stuck-crewmate-recovery` after a stale wake, looping or confused pane, answered-by-brief question, unresponsive worker, or failed steer.
 
+### Voice-mode stub
+
+A message beginning with `FM_VOICE_PREFIX` (U+2063 INVISIBLE SEPARATOR followed by `FIRSTMATE_VOICE: `, then a bridge-generated turn id, then the transcribed utterance) is a voice-mode turn the firstmate-voice bridge originated, never an ordinary captain-typed message; U+2063 has no normal keyboard keystroke, so an ordinary typed message cannot match by accident.
+On a voice-mode turn only, while firstmate has produced no visible reply text yet, emit brief, truthful progress lines at meaningful phase boundaries (e.g. after understanding the task, before reading crew output) by running `bin/fm-voice-progress.sh emit <turn-id> "<phase>"`.
+Each event goes only to the private side channel `state/voice-progress.jsonl` for the bridge to read; it never writes to the terminal, so an ordinary turn is never changed even if the hook is misused.
+Never emit progress on a turn that lacks the marker.
+`bin/fm-voice-progress.sh`'s header owns the exact marker, wire, and side-channel contract.
+
 ## 9. Escalation and captain etiquette
 
 **Talk in outcomes, not mechanics.**
