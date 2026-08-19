@@ -201,6 +201,11 @@ MAX_DEFER_SECS_DEFAULT=300
 WEDGE_ALARM_TIMEOUT_SECS_DEFAULT=10
 WEDGE_ALARM_LAST_EPOCH=0
 WEDGE_ALARM_NOTIFIER_PID=
+# In-process fingerprint of the last successfully delivered escalation digest.
+# Used by escalate_flush to detect a verbatim redelivery when the buffer clear
+# fails under ENOSPC (a full disk) - an in-memory guard needs no disk write, so
+# it survives the exact failure that breaks the file markers.
+LAST_DELIVERED_MSG=
 # The captain-relevant verb set and the status classifiers (last_status_line,
 # status_is_captain_relevant, window_to_task, scan_captain_relevant_statuses) now
 # live in bin/fm-classify-lib.sh, shared with the always-on watcher.
@@ -640,8 +645,16 @@ escalate_add() {  # <state> <distilled-item>
 # Flush the escalation buffer as ONE batched, single-line digest to the
 # supervisor pane. Returns 0 on successful inject (or empty buffer), non-zero on
 # inject failure (buffer preserved for retry / catch-up).
+#
+# Redelivery guard (2026-08-12 ENOSPC incident): the buffer clear below can fail
+# under a full disk, which used to leave the already-delivered digest in the
+# buffer and re-inject it verbatim every cycle for hours. The just-delivered
+# digest is tracked in-process (LAST_DELIVERED_MSG, no disk write), so a later
+# flush of an IDENTICAL payload is recognized as already-delivered: it is not
+# re-injected, the buffer is cleared best-effort, and the rate-limited wedge
+# alarm fires once instead of spamming the pane.
 escalate_flush() {  # <state>
-  local state=$1 buf item n msg
+  local state=$1 buf n msg oldest
   buf="$state/.subsuper-escalations"
   [ -s "$buf" ] || return 0
   n=$(wc -l < "$buf" 2>/dev/null || echo 0)
@@ -650,7 +663,38 @@ escalate_flush() {  # <state>
   # Single-line wrapper: no embedded newlines (inject_msg also collapses as a
   # safety net, but keeping the source single-line makes the intent explicit).
   msg=$(printf 'Supervisor escalate (%s event(s)): %s (pre-read; re-arm not needed — watcher daemon-managed)' "$n" "$msg")
-  if inject_msg "$msg" "$state"; then : > "$buf"; rm -f "${buf}.since" "$state/.subsuper-inject-wedged"; return 0; fi
+  if [ -n "${LAST_DELIVERED_MSG:-}" ] && [ "$msg" = "$LAST_DELIVERED_MSG" ]; then
+    # Identical payload was already delivered but its buffer clear failed
+    # (ENOSPC). Do not re-inject verbatim: alarm once (rate-limited), then unlink
+    # the stale buffer - unlink frees blocks and succeeds on a full disk where
+    # truncate can fail. Only disarm the guard when the clear actually succeeds,
+    # so a still-full disk keeps suppressing the next cycle too.
+    oldest=$(_oldest_line_age "$buf")
+    inject_wedge_alarm "$state" "$oldest" 2>/dev/null || true
+    if rm -f "$buf" 2>/dev/null; then
+      rm -f "${buf}.since" 2>/dev/null || true
+      LAST_DELIVERED_MSG=
+    fi
+    log "ERROR: suppressing verbatim redelivery of an already-delivered escalation digest (buffer clear failed, likely ENOSPC)"
+    return 0
+  fi
+  if inject_msg "$msg" "$state"; then
+    if : > "$buf" 2>/dev/null; then
+      rm -f "${buf}.since" "$state/.subsuper-inject-wedged"
+      LAST_DELIVERED_MSG=
+    elif rm -f "$buf" 2>/dev/null; then
+      # Truncate failed (ENOSPC); unlink frees the delivered digest's blocks and
+      # succeeds where truncate can fail.
+      rm -f "${buf}.since" 2>/dev/null || true
+      LAST_DELIVERED_MSG=
+    else
+      # Delivered but the buffer could not be cleared. Arm the in-memory guard
+      # so the next cycle does not re-inject the same digest verbatim.
+      LAST_DELIVERED_MSG=$msg
+      log "ERROR: escalation delivered but buffer could not be cleared; in-memory redelivery guard armed"
+    fi
+    return 0
+  fi
   return 1
 }
 

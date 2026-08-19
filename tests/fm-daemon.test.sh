@@ -1196,6 +1196,43 @@ test_normal_flush_clears_stale_wedge_marker() {
   pass "normal flush clears a stale wedge marker"
 }
 
+# ENOSPC (2026-08-12) regression: when the buffer clear fails after a confirmed
+# delivery, the identical digest used to be re-injected verbatim every cycle for
+# hours. The in-process redelivery guard must suppress the verbatim re-injection,
+# clear the buffer once the disk recovers, and raise the wedge alarm once.
+test_escalate_flush_suppresses_verbatim_redelivery_after_clear_failure() {
+  local dir state fakebin sent capture
+  dir=$(make_supercase redelivery-guard)
+  state="$dir/state"; fakebin="$dir/fakebin"
+  sent="$dir/sent.log"; : > "$sent"
+  capture="$dir/pane.txt"; : > "$capture"
+  escalate_add "$state" "done: PR 1"
+  afk_enter "$state"
+  # Simulate a full disk: truncate (file read-only) and unlink (state dir
+  # read-only) both fail, so the delivered digest stays in the buffer.
+  chmod 444 "$state/.subsuper-escalations"
+  chmod u-w "$state"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_PANE_ALIVE=1 FM_FAKE_TMUX_SENT="$sent" \
+    FM_FAKE_TMUX_CAPTURE="$capture" escalate_flush "$state" \
+    || fail "first escalation delivery failed"
+  [ "$(grep -c 'Supervisor escalate' "$sent" 2>/dev/null || true)" -eq 1 ] \
+    || fail "first delivery did not type the digest exactly once"
+  [ -s "$state/.subsuper-escalations" ] || fail "buffer unexpectedly cleared despite read-only state"
+  # Disk recovers. The identical buffered digest must NOT be re-injected: the
+  # in-memory guard clears the buffer and raises the wedge alarm instead.
+  chmod u+w "$state"
+  chmod 644 "$state/.subsuper-escalations"
+  WEDGE_ALARM_LAST_EPOCH=0
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_PANE_ALIVE=1 FM_FAKE_TMUX_SENT="$sent" \
+    FM_FAKE_TMUX_CAPTURE="$capture" escalate_flush "$state" \
+    || fail "redelivery-guard flush failed"
+  [ "$(grep -c 'Supervisor escalate' "$sent" 2>/dev/null || true)" -eq 1 ] \
+    || fail "identical digest was re-injected after its buffer clear failed (redelivery loop not suppressed)"
+  [ ! -s "$state/.subsuper-escalations" ] || fail "stale buffer not cleared by the redelivery guard"
+  [ -e "$state/.subsuper-inject-wedged" ] || fail "redelivery guard did not raise the wedge alarm"
+  pass "escalate_flush suppresses verbatim redelivery after a buffer-clear failure and alarms once"
+}
+
 test_below_max_defer_does_nothing() {
   local dir state fakebin sent capture
   dir=$(make_supercase below-maxdefer)
@@ -1889,6 +1926,7 @@ test_max_defer_empty_swallow_types_once_and_alarms
 test_max_defer_flushes_empty_idle_pane
 test_max_defer_pending_composer_alarms_without_typing
 test_normal_flush_clears_stale_wedge_marker
+test_escalate_flush_suppresses_verbatim_redelivery_after_clear_failure
 test_below_max_defer_does_nothing
 test_max_defer_afk_inactive_does_not_flush_or_alarm
 test_wedge_alarm_library_mode_defaults_to_discard
