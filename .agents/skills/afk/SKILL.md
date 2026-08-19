@@ -239,3 +239,6 @@ These properties must hold:
 `FM_INJECT_SKIP` (default `heartbeat`) force-self-handles matching kinds,
 overriding classification.
 Use it sparingly.
+
+**Known limitation on the Claude harness:** its native tracked-background-task hosting cycles the daemon's process roughly every 30-45 minutes on its own, independent of the daemon's own state. The Stop-hook auto-arm (`bin/fm-claude-stop-autoarm.sh`) now detects a dead daemon on the next Stop and rewakes the model so it relaunches via the native tool, instead of leaving away mode silently unsupervised.
+Nothing is lost across the gap - the reliability properties above hold across it - but see `harness-adapters` (claude section) for the verified evidence and the exact recovery command.

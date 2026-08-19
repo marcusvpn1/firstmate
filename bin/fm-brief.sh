@@ -59,6 +59,9 @@
 # not a delivery contract.
 # There is no --yolo flag here. The worker never owns merge decisions, so yolo is
 # a spawn-time and firstmate-side input only (AGENTS.md section 7).
+# Every ship brief also gates any deploy/redeploy/production-write step behind review
+# (rule 8), mirroring the PR-before-merge gate, so a redeploy-style task never reaches
+# production directly.
 # Every scaffold's status protocol distinguishes the configured
 # declared-external-wait verb (FM_CLASSIFY_PAUSED_VERB, default "paused") from
 # "blocked:": pause for a known external wait expected to clear on its own,
@@ -619,6 +622,11 @@ $ASK_USER_BLOCK
    going. A drive-call error, timeout, slow read, or generic unreachability is NOT a daemon error:
    the daemon accepts \`respond\` immediately and runs the round in the background, so a killed or
    timed-out call was only waiting for a read while the run kept working.
+8. If your task includes a deploy, redeploy, production write, or live-data mutation, that step is
+   gated exactly like a PR merge: never run it directly. Prepare the change, open it for review
+   (a PR, or a ready branch for a local-only project, per this project's delivery mode), report it
+   ready, and stop. Firstmate, under the configured authority, authorizes the deploy after review;
+   you never reach the deploy on your own.
 
 $INBOX_SECTION
 

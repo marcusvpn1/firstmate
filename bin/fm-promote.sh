@@ -21,6 +21,9 @@
 # read the scout's report (AGENTS.md section 7); data/projects.md holds the
 # captain's standing posture as context, and this script never looks it up.
 # no-mistakes-prod-only is a registry policy rather than a task mode and is refused.
+# fm-spawn.sh records kind=scout for every report-deliverable scratch task, so a
+# spec/plan-scaffolded brief lands here as scout; promotion recovers the real kind
+# from the "This is a SPEC/PLAN task:" marker fm-brief.sh writes into the brief.
 # Usage: fm-promote.sh <task-id> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off>
 set -eu
 
@@ -132,6 +135,20 @@ if ! fm_backlog_record_present "$META" "task record" "$STATE"; then
   exit 1
 fi
 KIND=$(grep '^kind=' "$META" | cut -d= -f2)
+# fm-spawn.sh records kind=scout for every report-deliverable scratch task because
+# it has no --spec/--plan flag, so a spec/plan-scaffolded brief lands here as scout
+# and the spec/plan branch below would never fire. Recover the real kind from the
+# contract marker fm-brief.sh --spec/--plan already writes into the brief. Kept as
+# a brief-marker read rather than a new spawn flag so no caller coordination is
+# required and the kind can never be forgotten at spawn time.
+BRIEF="$FM_HOME/data/$ID/brief.md"
+if [ "$KIND" = scout ] && [ -f "$BRIEF" ]; then
+  if grep -q '^This is a SPEC task:' "$BRIEF"; then
+    KIND=spec
+  elif grep -q '^This is a PLAN task:' "$BRIEF"; then
+    KIND=plan
+  fi
+fi
 case "$KIND" in
   scout|spec|plan) ;;
   *) echo "error: task $ID is not a promotable task (kind=$KIND, expected scout, spec, or plan)" >&2; exit 1 ;;
