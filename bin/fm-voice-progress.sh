@@ -86,6 +86,7 @@ fm_voice_json_escape() {  # <text> <result-var>
   text=${text//$'\n'/ }
   text=${text//$'\t'/ }
   text=${text//$'\r'/ }
+  text=$(printf '%s' "$text" | LC_ALL=C tr -d '\001-\010\013\014\016-\037')
   printf -v "$result_var" '%s' "$text"
 }
 
