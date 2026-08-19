@@ -14,9 +14,10 @@ import time
 from typing import Optional
 
 
-DEFAULT_PI = Path("/Users/marcusnascimento/.npm-global/bin/pi")
+NPM_GLOBAL_BIN = Path.home() / ".npm-global" / "bin"
+DEFAULT_PI = NPM_GLOBAL_BIN / "pi"
 DEFAULT_TOOLCALL_PROXY = Path(__file__).resolve().parent / "fm-toolcall-fallback-proxy.py"
-NODE_PATH = "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/marcusnascimento/.npm-global/bin"
+NODE_PATH = f"/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:{NPM_GLOBAL_BIN}"
 
 
 def free_loopback_port() -> int:
@@ -155,7 +156,7 @@ def main() -> int:
   (subpath "/Library/Developer/CommandLineTools")
   (subpath "/private/etc/ssl")
   (subpath "/opt/homebrew")
-  (subpath "/Users/marcusnascimento/.npm-global")
+  (subpath "{quote_sandbox(NPM_GLOBAL_BIN.parent)}")
   (literal "{quote_sandbox(args.pi.resolve())}")
   (subpath "{quote_sandbox(args.worktree.resolve())}")
   (subpath "{quote_sandbox(args.task_tmp.resolve())}")
