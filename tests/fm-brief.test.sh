@@ -297,6 +297,27 @@ test_ship_project_memory_wording() {
   pass "fm-brief.sh: ship project-memory wording carries the AGENTS.md authoring bar"
 }
 
+test_ship_deploy_gated_behind_review() {
+  local home id brief
+  home="$TMP_ROOT/deploy-gate-home"
+  mkdir -p "$home/data"
+  id="brief-deploy-gate-d1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "brief was not scaffolded"
+  assert_grep "deploy, redeploy, production write, or live-data mutation" "$brief" \
+    "deploy gate lost its trigger wording"
+  assert_grep "gated exactly like a PR merge: never run it directly" "$brief" \
+    "deploy gate lost its PR-merge analogy"
+  assert_grep "open it for review" "$brief" \
+    "deploy gate did not require opening the change for review"
+  assert_grep "Firstmate, under the configured authority, authorizes the deploy after review" "$brief" \
+    "deploy gate did not reserve the actual deploy for firstmate under authority"
+  assert_grep "you never reach the deploy on your own" "$brief" \
+    "deploy gate did not forbid the worker reaching the deploy directly"
+  pass "fm-brief.sh: ship briefs gate deploy/redeploy steps behind review, mirroring the PR-merge gate"
+}
+
 test_herdr_lab_contract_is_explicit_and_complete() {
   local home id brief
   home="$TMP_ROOT/herdr-lab-home"
@@ -790,6 +811,7 @@ test_ship_modes_generate_clean_briefs
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
 test_ship_project_memory_wording
+test_ship_deploy_gated_behind_review
 test_herdr_lab_contract_is_explicit_and_complete
 test_herdr_lab_contract_quotes_foreign_firstmate_path
 test_herdr_lab_omission_is_loud_for_ship_and_scout

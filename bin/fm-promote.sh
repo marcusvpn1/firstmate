@@ -6,6 +6,11 @@
 # (inventory scratch state, reset to a clean default-branch base, carry over only
 # intended fix changes, create branch fm/<task-id>, implement, then report done
 # according to the project's delivery mode).
+# spec/plan tasks are recorded as kind=scout in the meta because fm-spawn.sh has no
+# --spec/--plan flag; promote recovers the real kind from the contract marker
+# fm-brief.sh --spec/--plan writes into the brief, so the spec/plan ship
+# instructions (commit-forward convention, NEEDS CLARIFICATION resolution, Spec:
+# line) actually fire instead of the generic scout branch.
 # Usage: fm-promote.sh <task-id>
 set -eu
 
@@ -18,6 +23,20 @@ ID=$1
 META="$STATE/$ID.meta"
 [ -f "$META" ] || { echo "error: no meta for task $ID at $META" >&2; exit 1; }
 KIND=$(grep '^kind=' "$META" | cut -d= -f2)
+# fm-spawn.sh records kind=scout for every report-deliverable scratch task because
+# it has no --spec/--plan flag, so a spec/plan-scaffolded brief lands here as scout
+# and the spec/plan branch below would never fire. Recover the real kind from the
+# contract marker fm-brief.sh --spec/--plan already writes into the brief. Kept as
+# a brief-marker read rather than a new spawn flag so no caller coordination is
+# required and the kind can never be forgotten at spawn time.
+BRIEF="$FM_HOME/data/$ID/brief.md"
+if [ "$KIND" = scout ] && [ -f "$BRIEF" ]; then
+  if grep -q '^This is a SPEC task:' "$BRIEF"; then
+    KIND=spec
+  elif grep -q '^This is a PLAN task:' "$BRIEF"; then
+    KIND=plan
+  fi
+fi
 case "$KIND" in
   scout|spec|plan) ;;
   *) echo "error: task $ID is not a promotable task (kind=$KIND, expected scout, spec, or plan)" >&2; exit 1 ;;

@@ -16,8 +16,10 @@
 #     ownership. A live owner, missing lock, malformed lock, or unresolved
 #     ancestry remains inert, so a competing session never arms or rewakes.
 #   - AFK: while state/.afk exists the away daemon owns the watcher and triage;
-#     this hook exits 0 and NEVER rewakes the primary (checked again at
-#     translation time so a mid-cycle AFK transition is honored).
+#     this hook never arms. If the away daemon is ALIVE it exits 0 silently; if
+#     the daemon is DEAD (Claude's native tracked-background host was cycled,
+#     roughly every 30-45 min) it exits 2 so the model relaunches it. The
+#     mid-cycle AFK transition is still honored at translation time.
 #   - Need: arms only while work is in flight (state/*.meta) or X mode has a
 #     relay poll to run (state/x-watch.check.sh); an idle home exits 0.
 #   - Single-flight: Claude does not dedupe async hooks, so a home-scoped owner
@@ -62,6 +64,11 @@ EPOCH="$STATE/.claude-autoarm-epoch"
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-session-lock-lib.sh
 . "$SCRIPT_DIR/fm-session-lock-lib.sh"
+# shellcheck source=bin/fm-afk-start.sh
+. "$SCRIPT_DIR/fm-afk-start.sh"
+# fm-afk-start.sh enables errexit on source; this hook is nounset-only, so
+# restore errexit off (the same pattern fm-afk-launch.sh uses).
+set +e
 
 # Consume the Stop payload once. The decisions below are state-based; the
 # payload is read so a slow writer can never wedge on a full pipe.
@@ -86,8 +93,24 @@ if ! fm_session_lock_owned_by_self "$STATE"; then
   RECOVER_SESSION_LOCK=1
 fi
 
-# --- AFK: the away daemon owns the watcher and triage; never rewake ----------
-[ -e "$STATE/.afk" ] && exit 0
+# --- AFK: the away daemon owns the watcher and triage ----------------------
+# While afk is active the hook never arms the watcher. But Claude's native
+# tracked-background host for the daemon is cycled roughly every 30-45 minutes,
+# which would otherwise leave away mode silently unsupervised until a manual
+# relaunch (harness-adapters "Known limitation: native tracked-background daemon
+# lifetime"). Detect that gap and make it loud: a dead daemon rewakes the model
+# (exit 2) so it relaunches through the harness's native background-task tool.
+# A live daemon keeps the historical inert exit 0. daemon_lock_held_by_live_daemon
+# comes from bin/fm-afk-start.sh, sourced above.
+if [ -e "$STATE/.afk" ]; then
+  daemon_lock_held_by_live_daemon && exit 0
+  {
+    printf 'firstmate away-mode daemon is down - state/.afk is present but the sub-supervisor daemon is not running (the harness cycled its native tracked-background host).\n'
+    printf 'Nothing is lost: the durable wake queue and fm-wake-drain.sh recover any missed escalation.\n'
+    printf 'Relaunch through the harness native background-task tool: FM_AFK_STATE_PREPARED=1 bin/fm-afk-start.sh, then confirm state/.afk is still present and the daemon log resumes. If the relaunch fails, treat it as a blocker and report it.\n'
+  } >&2
+  exit 2
+fi
 
 # --- need: in-flight work or an X-mode relay poll ----------------------------
 need_supervision() {

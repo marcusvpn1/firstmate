@@ -815,6 +815,69 @@ test_secondmate_paused_resurfaces_in_normal_mode() {
   pass "a declared paused secondmate re-surfaces on the bounded normal-mode cadence"
 }
 
+# 2026-08-18/19 cadence anomaly: a paused secondmate's long recheck cadence
+# collapsed to firing every ~60-300s whenever its crew-state read briefly flipped
+# to working/none. The flap cleared the re-surface throttle marker
+# (.paused-resurfaced-<key>), so the very next paused classification re-surfaced
+# immediately. The throttle must survive a flap so the long cadence holds; only a
+# genuine pause end (status no longer paused) resets it.
+test_secondmate_pause_resurface_throttle_survives_flap() {
+  local dir state fakebin out capture_file statusf window key pane_hash sig pid
+  dir=$(make_case secondmate-pause-flap); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/secondmate-flap.status"
+  window="test:fm-secondmate-flap"
+  printf 'idle secondmate, declared pause\n' > "$capture_file"
+  printf 'window=%s\nkind=secondmate\n' "$window" > "$state/secondmate-flap.meta"
+  printf 'paused: awaiting the upstream release\n' > "$statusf"
+  back=$(( $(date +%s) - 500 ))
+  if [ "$(uname)" = Darwin ]; then touch -mt "$(date -r "$back" '+%Y%m%d%H%M.%S')" "$statusf"
+  else touch -m -d "@$back" "$statusf"; fi
+  sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-secondmate-flap_status"
+  key=$(printf '%s' "$window" | tr '.:/' '___')
+  pane_hash=$(hash_text "idle secondmate, declared pause")
+  printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+  # A pause that already re-surfaced moments ago: the throttle is fresh. Leave
+  # .paused-rechecked-<key> absent so pause_state_class re-reads crew state (the
+  # fast path needs a recent recheck marker), which is what lets the flap fire.
+  : > "$state/.paused-$key"
+  date +%s > "$state/.paused-resurfaced-$key"
+
+  # Phase A: the crew-state read flaps to working. The flap clears pause/stale
+  # tracking but must PRESERVE the re-surface throttle.
+  export FM_FAKE_CREW_STATE='state: working · source: pane · busy'
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+    FM_FAKE_TMUX_CURRENT_COMMAND=zsh \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
+    FM_PAUSE_RESURFACE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  if ! wait_live "$pid" 30; then
+    reap "$pid"; fail "watcher exited during the flap absorb: $(cat "$out")"
+  fi
+  [ -e "$state/.paused-resurfaced-$key" ] || { reap "$pid"; fail "classification flap cleared the re-surface throttle (cadence collapse root cause)"; }
+  reap "$pid"
+
+  # Phase B: crew state reads paused again. With the preserved throttle the
+  # re-surface must NOT fire even though the status file is already old.
+  export FM_FAKE_CREW_STATE='state: paused · source: status-log · awaiting'
+  : > "$out"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+    FM_FAKE_TMUX_CURRENT_COMMAND=zsh \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
+    FM_PAUSE_RESURFACE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  if wait_live "$pid" 30; then
+    reap "$pid"
+  else
+    wait "$pid"
+  fi
+  grep -F "awaiting external" "$out" >/dev/null && fail "paused secondmate re-surfaced despite a fresh throttle after a flap"
+  unset FM_FAKE_CREW_STATE
+  pass "a paused secondmate's re-surface throttle survives a classification flap"
+}
+
 test_secondmate_nonpaused_stale_remains_suppressed() {
   local dir state fakebin out capture_file statusf window key pane_hash sig pid
   dir=$(make_case secondmate-stale-suppressed); state="$dir/state"; fakebin="$dir/fakebin"
@@ -1580,6 +1643,7 @@ test_nonterminal_stale_not_working_surfaced
 test_nonterminal_stale_paused_absorbed_then_resurfaced
 test_exited_declared_pause_is_bounded_but_live_gate_surfaces
 test_secondmate_paused_resurfaces_in_normal_mode
+test_secondmate_pause_resurface_throttle_survives_flap
 test_secondmate_nonpaused_stale_remains_suppressed
 test_secondmate_unpause_clears_pause_tracking
 test_nonterminal_stale_pause_transitions_reclassify_unchanged_hash
