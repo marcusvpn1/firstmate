@@ -449,7 +449,7 @@ test_agy_model_effort_in_spawn() {
     grep -Fq -- "$1" "$SPAWN" || fail "expected line missing from fm-spawn: $1"
   }
   assert_source_line \
-    "    claude|codex|opencode|pi|pi-signed|grok|kimi|agy)"
+    "    claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|agy)"
   pass "fm-spawn: agy is in model_flag_for_harness"
 }
 

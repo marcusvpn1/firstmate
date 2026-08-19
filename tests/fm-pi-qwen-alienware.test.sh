@@ -5,6 +5,13 @@ set -u
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
+# The runner unconditionally shells out to /usr/bin/sandbox-exec (macOS
+# Seatbelt) to bound the local-Qwen scout; that binary does not exist on
+# Linux, so every test here is a no-op there. Skip cleanly instead of
+# failing.
+command -v /usr/bin/sandbox-exec >/dev/null 2>&1 \
+  || { echo "skip: sandbox-exec not found (macOS-only bounded scout sandbox)"; exit 0; }
+
 RUNNER="$ROOT/bin/fm-pi-qwen-alienware.py"
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/fm-pi-qwen-alienware.XXXXXX")
 trap 'rm -rf "$TMP_ROOT"' EXIT
