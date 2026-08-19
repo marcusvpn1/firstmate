@@ -40,6 +40,9 @@
 #   local-only   implement on branch, stop and report "ready in branch" (no push/PR);
 #                captain approves, firstmate merges to local main
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
+# Every ship brief also gates any deploy/redeploy/production-write step behind review
+# (rule 8), mirroring the PR-before-merge gate, so a redeploy-style task never reaches
+# production directly.
 # Scout tasks ignore mode - their deliverable is a report, not a merge.
 # Every scaffold's status protocol distinguishes the configured
 # declared-external-wait verb (FM_CLASSIFY_PAUSED_VERB, default "paused") from
@@ -525,6 +528,11 @@ $RULE1
 7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
    every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
    daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
+8. If your task includes a deploy, redeploy, production write, or live-data mutation, that step is
+   gated exactly like a PR merge: never run it directly. Prepare the change, open it for review
+   (a PR, or a ready branch for a local-only project, per this project's delivery mode), report it
+   ready, and stop. Firstmate, under the configured authority, authorizes the deploy after review;
+   you never reach the deploy on your own.
 
 # Project memory
 If \`AGENTS.md\` or \`CLAUDE.md\` already exists, or if this task produced durable project-intrinsic knowledge, run \`$FM_ROOT/bin/fm-ensure-agents-md.sh .\` in the worktree.
