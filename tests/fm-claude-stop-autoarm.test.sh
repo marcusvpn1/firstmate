@@ -31,6 +31,7 @@ install_autoarm_scripts() {
   cp "$ROOT/bin/fm-supervision-lib.sh" "$dir/bin/fm-supervision-lib.sh"
   cp "$ROOT/bin/fm-wake-lib.sh" "$dir/bin/fm-wake-lib.sh"
   cp "$ROOT/bin/fm-session-lock-lib.sh" "$dir/bin/fm-session-lock-lib.sh"
+  cp "$ROOT/bin/fm-afk-start.sh" "$dir/bin/fm-afk-start.sh"
   cp "$ROOT/bin/fm-lock.sh" "$dir/bin/fm-lock.sh"
   chmod +x "$dir/bin/fm-claude-stop-autoarm.sh" "$dir/bin/fm-lock.sh"
 }
@@ -148,6 +149,18 @@ epoch_outcome() {
   sed -n 's/^.*outcome=\([a-z][a-z]*\) .*$/\1/p' "$1/state/.claude-autoarm-epoch" 2>/dev/null || true
 }
 
+# Install a LIVE away-mode daemon lock using this test shell's own pid (alive
+# for the whole test, so no background process to reap or clean up). The identity
+# is the real fm_pid_identity of this shell, so the hook's daemon-liveness check
+# reads alive. Never use a backgrounded child here: a child launched inside a
+# command substitution is reaped when that subshell exits, leaving a dead pid.
+make_live_daemon_lock() {  # <dir>
+  local dir=$1
+  mkdir -p "$dir/state/.supervise-daemon.lock"
+  printf '%s' "$$" > "$dir/state/.supervise-daemon.lock/pid"
+  ( . "$ROOT/bin/fm-wake-lib.sh"; fm_pid_identity "$$" > "$dir/state/.supervise-daemon.lock/pid-identity" )
+}
+
 # --- registration contract ----------------------------------------------------
 
 # --- scope and gates ----------------------------------------------------------
@@ -225,10 +238,28 @@ test_inert_when_afk() {
   : > "$dir/state/task.meta"
   : > "$dir/state/.afk"
   write_arm_fixture "$dir" actionable
+  # A LIVE daemon keeps the hook inert (the historical AFK behavior); a dead
+  # daemon is the separate detect-and-wake case below.
+  make_live_daemon_lock "$dir"
   out=$(run_autoarm "$dir" 2>/dev/null); status=$?
-  expect_code 0 "$status" "hook must never arm or rewake while away mode owns triage"
-  [ ! -e "$dir/state/arm-ran" ] || fail "hook armed while state/.afk existed"
-  pass "auto-arm: inert while AFK owns supervision"
+  expect_code 0 "$status" "hook must never arm or rewake while a live away daemon owns triage"
+  [ ! -e "$dir/state/arm-ran" ] || fail "hook armed while a live away daemon existed"
+  pass "auto-arm: inert while a live AFK daemon owns supervision"
+}
+
+test_afk_dead_daemon_rewakes() {
+  local dir out status
+  dir=$(make_primary_dir "$TMP_ROOT/afk-dead-daemon")
+  : > "$dir/state/task.meta"
+  : > "$dir/state/.afk"
+  write_arm_fixture "$dir" actionable
+  # No daemon lock: the away-mode daemon is gone (its native host was cycled).
+  out=$(run_autoarm "$dir" 2>/dev/null); status=$?
+  expect_code 2 "$status" "a dead away daemon during afk must rewake the model"
+  assert_contains "$out" "away-mode daemon is down" "dead-daemon rewake did not name the daemon gap"
+  assert_contains "$out" "FM_AFK_STATE_PREPARED=1 bin/fm-afk-start.sh" "dead-daemon rewake did not give the relaunch command"
+  [ ! -e "$dir/state/arm-ran" ] || fail "dead-daemon rewake must not arm the watcher"
+  pass "auto-arm: a dead away daemon during afk rewakes the model with the relaunch command"
 }
 
 test_stale_lock_recovery_preserves_afk_and_need_gates() {
@@ -239,7 +270,7 @@ test_stale_lock_recovery_preserves_afk_and_need_gates() {
   printf '9999999\n' > "$afk_dir/state/.lock"
   write_arm_fixture "$afk_dir" actionable
   out=$(printf '%s\n' '{"session_id":"stale-afk"}' | FM_HOME="$afk_dir" "$FAKE_CLAUDE" -c '"$FM_HOME/bin/fm-claude-stop-autoarm.sh"' 2>&1); status=$?
-  expect_code 0 "$status" "a stale owner must not widen the AFK gate"
+  expect_code 2 "$status" "a stale owner with a dead away daemon must rewake, not widen the AFK gate"
   [ "$(cat "$afk_dir/state/.lock")" = 9999999 ] || fail "AFK stale lock was reclaimed despite away ownership"
   [ ! -e "$afk_dir/state/arm-ran" ] || fail "stale AFK home armed"
 
@@ -421,6 +452,7 @@ test_inert_without_session_lock
 test_reclaims_stale_session_lock_before_arming
 test_inert_when_lock_held_by_other_harness
 test_inert_when_afk
+test_afk_dead_daemon_rewakes
 test_stale_lock_recovery_preserves_afk_and_need_gates
 test_resolves_outermost_claude_pid_in_nested_bgspare_chain
 test_inert_when_fleet_idle
