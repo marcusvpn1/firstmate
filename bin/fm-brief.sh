@@ -493,6 +493,7 @@ $HERDR_SECTION
 You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
 
 **Verify isolation before anything else.** Run \`pwd -P\` and \`git rev-parse --show-toplevel\`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from.
+Compare by directory identity, not path text: on a case-insensitive filesystem (the default macOS APFS) \`pwd -P\` keeps the case you typed while \`git rev-parse --show-toplevel\` prints the canonical on-disk case, so treat \`git rev-parse --show-toplevel\` as the authoritative check and treat any case-only difference between the two outputs as a signal to stop and re-verify.
 The path check is authoritative: \`git rev-parse --git-dir\` and \`git rev-parse --git-common-dir\` can help inspect the repo, but they do not prove you are outside the primary checkout.
 If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append \`blocked: launched in primary checkout, not an isolated worktree\` to the status file and stop.
 
