@@ -949,7 +949,13 @@ validate_spawn_worktree() {  # <source> <inspect-target>
   if ! wt_top_real=$(cd "$wt_top" 2>/dev/null && pwd -P); then
     wt_top_real=
   fi
-  if [ -z "$wt_real" ] || [ -z "$wt_top_real" ] || [ "$wt_real" != "$wt_top_real" ] || [ "$wt_real" = "$proj_real" ]; then
+  # Compare by directory identity (-ef: resolved device+inode), not path text.
+  # pwd -P resolves symlinks but preserves case, so on a case-insensitive
+  # filesystem (default macOS APFS) a case-variant spelling of the primary
+  # checkout would pass a string comparison (issue #2654).
+  if [ -z "$wt_real" ] || [ -z "$wt_top_real" ] \
+      || ! [ "$wt_real" -ef "$wt_top_real" ] \
+      || [ "$wt_real" -ef "$proj_real" ]; then
     echo "error: $source did not yield an isolated worktree (resolved '$WT'; worktree root '${wt_top:-none}'; primary '$PROJ_ABS'); refusing to launch to avoid tangling the primary checkout. Inspect target $inspect_target" >&2
     exit 1
   fi
@@ -1508,7 +1514,11 @@ if [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
     p=$(spawn_current_path "$WT_TARGET" || true)
     if [ -n "$p" ]; then
       p_real=$(real_path_or_raw "$p")
-      if [ "$p_real" != "$PROJ_ABS_REAL" ]; then
+      # Compare by directory identity (-ef), not path text: pwd -P resolves
+      # symlinks but preserves case, so on a case-insensitive filesystem a
+      # case-variant spelling of the primary checkout would pass a string
+      # comparison and be accepted as a worktree (issue #2654).
+      if ! [ "$p_real" -ef "$PROJ_ABS_REAL" ]; then
         if [ -n "$candidate" ] && [ "$p_real" = "$candidate" ]; then
           WT="$p"
           break
