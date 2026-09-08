@@ -1482,8 +1482,8 @@ launch_template() {
       ;;
     pi-qwen-alienware)
       case "$kind" in
-        scout|ship)
-          printf '%s%s%s' '/usr/bin/python3 __FMLOCAL__ --id __ID__ --worktree "$PWD" --brief __BRIEF__ --report __REPORT__ --status __STATUS__ --run-record __RUNRECORD__ --task-tmp __TASKTMP__ --kind ' "$kind" ' __MODELFLAG__'"${FM_PI_QWEN_TOOLCALL_FALLBACK:+ --tool-call-fallback}"
+        scout)
+          printf '%s%s' '/usr/bin/python3 __FMLOCAL__ --id __ID__ --worktree "$PWD" --brief __BRIEF__ --report __REPORT__ --status __STATUS__ --run-record __RUNRECORD__ --task-tmp __TASKTMP__ __MODELFLAG__'"${FM_PI_QWEN_TOOLCALL_FALLBACK:+ --tool-call-fallback}"
           ;;
         *)
           printf ':'
@@ -1656,14 +1656,9 @@ if [ "$KIND" = secondmate ] && { [ "$HARNESS" = muse ] || [ "$HARNESS" = gemini 
   exit 1
 fi
 
-# bin/fm-pi-qwen-alienware.py's --kind ship support (added and tested for the
-# local-ai-server RUNBOOK.md Phase 2 ship-job pilot, 2026-08-17) stays dormant
-# here on purpose: the pilot ran twice against the runbook's own canonical
-# task and failed both times on the real test-execution/verification step
-# (local-ai-server D-025), so the lane was retired to scout-only rather than
-# promoted. The python adapter's ship logic is left in place, tested, as
-# evidence and for a possible future revisit; this gate is what actually
-# keeps it unreachable from ordinary dispatch.
+# pi-qwen-alienware is scout-only: the Phase 2 ship-job pilot (2026-08-17)
+# failed twice on real test-execution/verification (local-ai-server D-025),
+# so the lane was retired to scout-only and the runner ships no ship mode.
 if [ "$HARNESS" = pi-qwen-alienware ] && [ "$KIND" != scout ]; then
   echo "error: pi-qwen-alienware is experimental and supports --scout only" >&2
   exit 1

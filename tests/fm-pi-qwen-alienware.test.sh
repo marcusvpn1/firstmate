@@ -98,60 +98,8 @@ EOF
   pass "bounded local-Qwen prompt contains the task without inherited FirstMate boilerplate"
 }
 
-test_ship_writes_worktree_and_records_class() {
-  local root fake out status
-  root=$(make_world ship-success)
-  fake="$root/tasktmp/fake-pi"
-  cat > "$fake" <<EOF
-#!/bin/sh
-printf 'module.exports = function slugify(s) { return s; };\\n' > '$root/worktree/slugify.js'
-printf 'fixture evidence\\n' > '$root/data/task/report.md'
-printf '{"type":"agent_end"}\\n'
-EOF
-  chmod +x "$fake"
-
-  out=$("$RUNNER" --id task --worktree "$root/worktree" \
-    --brief "$root/data/task/brief.md" --report "$root/data/task/report.md" \
-    --status "$root/state/task.status" --run-record "$root/data/task/run-record.json" \
-    --task-tmp "$root/tasktmp" --kind ship --timeout 5 --pi "$fake" 2>&1)
-  status=$?
-  expect_code 0 "$status" "bounded ship runner should pass when it writes only within the worktree"
-  [ -f "$root/worktree/slugify.js" ] || fail "bounded ship did not write the expected worktree file"
-  assert_grep '"result": "pass"' "$root/data/task/run-record.json" "ship run record did not pass"
-  assert_grep '"task_class": "ship"' "$root/data/task/run-record.json" "ship run record kept the scout task class"
-  assert_grep '"permitted_tools": [' "$root/data/task/run-record.json" "ship run record lost permitted_tools"
-  assert_grep 'edit' "$root/data/task/run-record.json" "ship run record omitted the edit tool"
-  assert_grep 'bash' "$root/data/task/run-record.json" "ship run record omitted the bash tool"
-  assert_grep 'done: bounded local-Qwen ship pass' "$root/state/task.status" "ship status did not report done"
-  assert_contains "$out" '"result": "pass"' "ship runner output did not expose pass result"
-  pass "bounded local-Qwen ship writes within its worktree and records task_class=ship"
-}
-
-test_ship_cannot_write_outside_worktree() {
-  local root fake status outside
-  root=$(make_world ship-escape)
-  outside="$TMP_ROOT/outside-ship-escape.txt"
-  fake="$root/tasktmp/fake-pi"
-  cat > "$fake" <<EOF
-#!/bin/sh
-printf 'escaped\\n' > '$outside' 2>'$root/tasktmp/escape.err'
-printf 'fixture evidence\\n' > '$root/data/task/report.md'
-printf '{"type":"agent_end"}\\n'
-EOF
-  chmod +x "$fake"
-
-  "$RUNNER" --id task --worktree "$root/worktree" \
-    --brief "$root/data/task/brief.md" --report "$root/data/task/report.md" \
-    --status "$root/state/task.status" --run-record "$root/data/task/run-record.json" \
-    --task-tmp "$root/tasktmp" --kind ship --timeout 5 --pi "$fake" >/dev/null 2>&1
-  [ ! -e "$outside" ] || fail "bounded ship sandbox let a write escape the worktree/task-tmp boundary"
-  pass "bounded local-Qwen ship still cannot write outside its worktree/task-tmp boundary"
-}
-
 test_success_writes_only_report_and_record
 test_timeout_kills_process_group_and_fails
 test_prompt_contains_only_task_and_boundary
-test_ship_writes_worktree_and_records_class
-test_ship_cannot_write_outside_worktree
 
 echo "# all fm-pi-qwen-alienware tests passed"

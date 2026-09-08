@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one bounded local-Qwen scout (read-only) or ship (worktree-write) task under a deny-default macOS sandbox."""
+"""Run one bounded local-Qwen scout (read-only) task under a deny-default macOS sandbox."""
 
 import argparse
 import hashlib
@@ -86,8 +86,6 @@ def main() -> int:
     parser.add_argument("--run-record", type=Path, required=True)
     parser.add_argument("--task-tmp", type=Path, required=True)
     parser.add_argument("--model", default="ollama-alienware/qwen3:8b")
-    parser.add_argument("--kind", choices=["scout", "ship"], default="scout",
-                         help="scout: read-only, report-only. ship: bounded write access to the worktree")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--pi", type=Path, default=DEFAULT_PI, help=argparse.SUPPRESS)
     parser.add_argument("--tool-call-fallback", action="store_true",
@@ -166,7 +164,6 @@ def main() -> int:
 (allow file-write*
   (subpath "{quote_sandbox(args.task_tmp.resolve())}")
   (literal "{quote_sandbox(args.report.resolve())}")
-{"  (subpath " + chr(34) + quote_sandbox(args.worktree.resolve()) + chr(34) + ")" if args.kind == "ship" else ""}
   (literal "/dev/stdout")
   (literal "/dev/stderr")
   (subpath "/dev/fd"))
@@ -177,30 +174,16 @@ def main() -> int:
         task = extract_task(args.brief.read_text())
     except ValueError as exc:
         parser.error(str(exc))
-    if args.kind == "ship":
-        tools = "read,grep,find,ls,write,edit,bash"
-        prompt = (
-            "EXPERIMENTAL BOUNDED SHIP BOUNDARY:\n"
-            "Use only read, grep, find, ls, write, edit, and bash, scoped to the current worktree. "
-            "Do not install dependencies, access the network, commit, push, or edit any file the task "
-            "does not require. Run only the one local test command the task describes; do not run any "
-            "other command. When finished, report as your final answer: model, files changed, the exact "
-            "test command run, its result, and any limitations. "
-            "If the task is ambiguous or its requested action conflicts with this boundary, stop and "
-            "report that clearly instead of guessing or attempting the action.\n\n"
-            "TASK:\n" + task
-        )
-    else:
-        tools = "read,grep,find,ls,write"
-        prompt = (
-            "EXPERIMENTAL READ-ONLY SCOUT BOUNDARY:\n"
-            "Use only read, grep, find, ls, and write. Do not run shell commands, edit the worktree, "
-            "install anything, access another path, or use public network. The only writable deliverable "
-            f"is {args.report.resolve()}. Write a self-contained evidence report there. "
-            "If the task is ambiguous or its requested action conflicts with this boundary, report that "
-            "clearly instead of guessing or attempting the action.\n\n"
-            "TASK:\n" + task
-        )
+    tools = "read,grep,find,ls,write"
+    prompt = (
+        "EXPERIMENTAL READ-ONLY SCOUT BOUNDARY:\n"
+        "Use only read, grep, find, ls, and write. Do not run shell commands, edit the worktree, "
+        "install anything, access another path, or use public network. The only writable deliverable "
+        f"is {args.report.resolve()}. Write a self-contained evidence report there. "
+        "If the task is ambiguous or its requested action conflicts with this boundary, report that "
+        "clearly instead of guessing or attempting the action.\n\n"
+        "TASK:\n" + task
+    )
     command = [
         "/usr/bin/sandbox-exec", "-f", str(profile), str(args.pi.resolve()),
         "--provider", "ollama-alienware", "--model", model_id, "--thinking", "off",
@@ -244,21 +227,13 @@ def main() -> int:
         cwd=args.worktree, text=True, capture_output=True, check=False,
     )
     report_hash = sha256(args.report)
-    if args.kind == "ship":
-        # A ship job is expected to change the worktree; whether the change is
-        # correct is verified independently outside this adapter (diff review,
-        # test rerun), not inferred here. This records execution containment only.
-        passed = return_code == 0 and not timed_out
-        allowed_write_paths = [str(args.worktree.resolve()), str(args.report.resolve()), str(args.task_tmp.resolve())]
-        permitted_tools = ["read", "grep", "find", "ls", "write", "edit", "bash"]
-    else:
-        passed = return_code == 0 and not timed_out and report_hash is not None and not diff.stdout.strip()
-        allowed_write_paths = [str(args.report.resolve()), str(args.task_tmp.resolve())]
-        permitted_tools = ["read", "grep", "find", "ls", "write"]
+    passed = return_code == 0 and not timed_out and report_hash is not None and not diff.stdout.strip()
+    allowed_write_paths = [str(args.report.resolve()), str(args.task_tmp.resolve())]
+    permitted_tools = ["read", "grep", "find", "ls", "write"]
     record = {
         "schema_version": 1,
         "task_id": args.id,
-        "task_class": args.kind,
+        "task_class": "scout",
         "harness": "pi-qwen-alienware",
         "provider": "ollama-alienware",
         "model": model_id,
@@ -285,7 +260,7 @@ def main() -> int:
     args.status.parent.mkdir(parents=True, exist_ok=True)
     state = "done" if passed else "failed"
     with args.status.open("a") as stream:
-        stream.write(f"{state}: bounded local-Qwen {args.kind} {record['result']}\n")
+        stream.write(f"{state}: bounded local-Qwen scout {record['result']}\n")
     print(json.dumps(record, sort_keys=True))
     return 0 if passed else 1
 
