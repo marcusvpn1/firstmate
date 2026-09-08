@@ -12,6 +12,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 const BINARY = "codebase-memory-mcp";
 
 // ---------------------------------------------------------------------------
@@ -19,6 +20,14 @@ const BINARY = "codebase-memory-mcp";
 // ---------------------------------------------------------------------------
 
 let _projectId: string | null = null;
+
+function canonicalPath(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
+  }
+}
 
 function resolveProjectId(cwd: string): string | null {
   if (_projectId !== null) return _projectId || null;
@@ -31,10 +40,20 @@ function resolveProjectId(cwd: string): string | null {
     const parsed = JSON.parse(raw);
     const projects: Array<{ name: string; root_path: string }> =
       parsed?.projects ?? [];
-    // Prefer exact root_path match, then canonical-root match, then the
-    // first project.
     const exact = projects.find((p) => p.root_path === cwd);
-    _projectId = exact?.name ?? projects[0]?.name ?? "";
+    if (exact) {
+      _projectId = exact.name;
+      return _projectId;
+    }
+    const canonicalCwd = canonicalPath(cwd);
+    const canonical = projects.find(
+      (p) => canonicalPath(p.root_path) === canonicalCwd,
+    );
+    if (canonical) {
+      _projectId = canonical.name;
+      return _projectId;
+    }
+    _projectId = projects.length === 1 ? projects[0].name : "";
   } catch {
     _projectId = "";
   }

@@ -141,7 +141,7 @@ KIND=$(grep '^kind=' "$META" | cut -d= -f2)
 # contract marker fm-brief.sh --spec/--plan already writes into the brief. Kept as
 # a brief-marker read rather than a new spawn flag so no caller coordination is
 # required and the kind can never be forgotten at spawn time.
-BRIEF="$FM_HOME/data/$ID/brief.md"
+BRIEF="$DATA/$ID/brief.md"
 if [ "$KIND" = scout ] && [ -f "$BRIEF" ]; then
   if grep -q '^This is a SPEC task:' "$BRIEF"; then
     KIND=spec
@@ -155,7 +155,7 @@ case "$KIND" in
 esac
 
 if [ "$KIND" = spec ] || [ "$KIND" = plan ]; then
-  REPORT="$FM_HOME/data/$ID/report.md"
+  REPORT="$DATA/$ID/report.md"
   [ -f "$REPORT" ] || { echo "error: task $ID has no report at $REPORT; the spec/plan must complete and produce a report before promotion" >&2; exit 1; }
   PROMOTION_KIND_STEP="5. This task was promoted from a $KIND. Load \`$FM_ROOT/.agents/skills/spec-scaffold/SKILL.md\` and follow its commit-forward convention: read the $KIND at \`$REPORT\`, commit the spec content into the right doc per \`docs/specs/README.md\`, resolve or explicitly re-open every \`[NEEDS CLARIFICATION]\` marker, and include a \`Spec: docs/specs/<file>.md\` line in \`--intent\` (no-mistakes) or the commit message (direct-PR/local-only)."
 else
