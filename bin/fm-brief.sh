@@ -581,7 +581,7 @@ If the top-level path is the primary checkout or not the worktree you were launc
 # Multi-task progress
 If this brief contains multiple independent tasks, load \`$FM_ROOT/.agents/skills/progress-ledger/SKILL.md\` before starting any work.
 Create a progress ledger at \`<worktree>/.fm-progress.md\` and follow its procedure: read it on start to skip already-completed tasks, append a dated completion line with the commit hash after each task, and on any restart or recovery read the ledger to pick up where you left off.
-The ledger is gitignored scratch — never commit it.
+Keep it out of git before creating it: run \`printf '.fm-progress.md\n' >> "\$(git rev-parse --git-path info/exclude)"\` so this worktree's own exclude file covers it. Never commit it.
 When this brief has only one task, skip the ledger entirely.
 
 # Rules

@@ -18,7 +18,13 @@ This skill is the single owner of the durable progress-ledger pattern.
 ## Ledger file convention
 
 The ledger lives at `<worktree>/.fm-progress.md`.
-It is gitignored scratch — never commit it, never read it outside this procedure, and never let it influence git operations.
+It is local scratch — never commit it, never read it outside this procedure, and never let it influence git operations.
+The repo's `.gitignore` covers this path only in the firstmate repo itself, so exclude it in the target worktree before creating it:
+
+```sh
+printf '.fm-progress.md\n' >> "$(git rev-parse --git-path info/exclude)"
+```
+
 The format is a Markdown file with one task header per multi-task item and a dated completion line beneath it.
 
 Template:
@@ -38,7 +44,8 @@ Template:
 1. If this brief does not contain multiple independent tasks, stop — the ledger is not needed.
 2. If `<worktree>/.fm-progress.md` exists, read it and note every task marked `[x]` as already completed.
    Skip those tasks entirely — do not re-execute, re-inspect, or re-verify them.
-3. If the ledger does not exist, create it from the task list in the brief.
+3. If the ledger does not exist, first exclude it from git in this worktree
+   (see Ledger file convention), then create it from the task list in the brief.
    Mark every task `[ ] not started`.
 4. Proceed with the first incomplete task.
 
