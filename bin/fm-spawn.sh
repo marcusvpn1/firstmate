@@ -1483,7 +1483,7 @@ launch_template() {
     pi-qwen-alienware)
       case "$kind" in
         scout)
-          printf '%s%s' '/usr/bin/python3 __FMLOCAL__ --id __ID__ --worktree "$PWD" --brief __BRIEF__ --report __REPORT__ --status __STATUS__ --run-record __RUNRECORD__ --task-tmp __TASKTMP__ __MODELFLAG__'"${FM_PI_QWEN_TOOLCALL_FALLBACK:+ --tool-call-fallback}"
+          printf '%s' '/usr/bin/python3 __FMLOCAL__ --id __ID__ --worktree "$PWD" --brief __BRIEF__ --report __REPORT__ --status __STATUS__ --run-record __RUNRECORD__ --task-tmp __TASKTMP__ __MODELFLAG__'"${FM_PI_QWEN_TOOLCALL_FALLBACK:+ --tool-call-fallback}"
           ;;
         *)
           printf ':'
