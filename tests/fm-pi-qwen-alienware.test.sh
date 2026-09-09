@@ -6,6 +6,11 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 RUNNER="$ROOT/bin/fm-pi-qwen-alienware.py"
+if [ "$(uname -s)" != "Darwin" ]; then
+  pass "Darwin-only test: bounded scout requires macOS sandbox-exec; skipping on Linux"
+  exit 0
+fi
+
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/fm-pi-qwen-alienware.XXXXXX")
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
