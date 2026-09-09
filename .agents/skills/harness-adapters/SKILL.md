@@ -134,7 +134,7 @@ The index artifact (`.codebase-memory/graph.db.zst`) is gitignored and cached un
 
 **Pi extension details.** The `.pi/extensions/fm-cbmm-mcp.ts` extension registers `cbmm_search_graph`, `cbmm_search_code`, `cbmm_query_graph`, `cbmm_get_architecture`, `cbmm_trace_path`, `cbmm_get_code_snippet`, and `cbmm_list_projects`.
 Each tool shells out to `codebase-memory-mcp cli <tool>` and returns JSON.
-The project ID is resolved once per session from `list_projects` matching the current cwd.
+The project ID is resolved once per session from `list_projects` matching the current cwd or its canonical path.
 Error output (the `level=info msg=mem.init` line on stderr) is suppressed.
 
 ## pi-qwen-alienware (EXPERIMENTAL 2026-08-17)
