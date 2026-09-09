@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2031 # sleep & correctly sets $! in current shell
 # Behavior tests for the Claude Stop-owned watcher auto-arm
 # (bin/fm-claude-stop-autoarm.sh, docs/watcher-continuity.md).
 #
