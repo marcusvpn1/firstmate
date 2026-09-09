@@ -1,0 +1,10 @@
+=== 1) ship brief carries the multi-task progress instruction + exclude command ===
+25:# Multi-task progress
+26-If this brief contains multiple independent tasks, load `/Users/marcusnascimento/.no-mistakes/worktrees/2e94fa377077/01M21JTCD568DCKK9JQ94ECT1N/.agents/skills/progress-ledger/SKILL.md` before starting any work.
+27-Create a progress ledger at `<worktree>/.fm-progress.md` and follow its procedure: read it on start to skip already-completed tasks, append a dated completion line with the commit hash after each task, and on any restart or recovery read the ledger to pick up where you left off.
+28-Keep it out of git before creating it: run `printf '.fm-progress.md\n' >> "$(git rev-parse --git-path info/exclude)"` so this worktree's own exclude file covers it. Never commit it.
+
+=== 2) the exclude command actually hides .fm-progress.md in a TARGET worktree ===
+git check-ignore result: .fm-progress.md
+git status --porcelain (should be empty => ledger hidden):
+git status porcelain exit: 0 ; file still on disk: yes

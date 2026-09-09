@@ -1,0 +1,9 @@
+=== fm-promote.sh with FM_DATA_OVERRIDE -> spec branch must still fire ===
+promoted promote-spec-override to ship mode=direct-PR yolo=off (teardown protection restored)
+wrote ship instructions for mode=direct-PR: /tmp/fm-manual-promote-override.DcSCkF/customdata/promote-spec-override/ship-instructions.md
+next: FM_HOME=/tmp/fm-manual-promote-override.DcSCkF bin/fm-send.sh fm-promote-spec-override "$(cat /tmp/fm-manual-promote-override.DcSCkF/customdata/promote-spec-override/ship-instructions.md)"
+--- exit: 0 ---
+=== promotion kind step (should say 'promoted from a spec', NOT generic scout) ===
+promoted from a spec
+promoted from a spec
+commit-forward convention

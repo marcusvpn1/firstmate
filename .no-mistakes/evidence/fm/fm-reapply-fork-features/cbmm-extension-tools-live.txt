@@ -1,0 +1,58 @@
+=== cbmm_search_code against wellness-system (real content search) ===
+TOOL=cbmm_search_code cwd=/Users/marcusnascimento/Projects/wellness-system
+{
+  "results": [
+    {
+      "node": "evaluate_day",
+      "qualified_name": "wellness-system.backend.evaluator.evaluate_day",
+      "label": "Function",
+      "file": "backend/evaluator.py",
+      "start_line": 113,
+      "end_line": 351,
+      "in_degree": 12,
+      "out_degree": 13,
+      "match_lines": [
+        115,
+        144,
+        181,
+        230,
+        260,
+        276,
+        314,
+        339,
+        351
+      ]
+    },
+    {
+
+=== cbmm_get_architecture (layers) against wellness-system ===
+TOOL=cbmm_get_architecture cwd=/Users/marcusnascimento/Projects/wellness-system
+{
+  "project": "wellness-system",
+  "total_nodes": 675,
+  "total_edges": 1341,
+  "layers": [
+    {
+      "name": "bot",
+      "layer": "entry",
+      "reason": "has entry points, only outbound calls"
+    },
+    {
+      "name": "dict",
+      "layer": "core",
+      "reason": "high fan-in (9 in, 0 out)"
+    },
+    {
+      "name": "evaluator",
+      "layer": "core",
+      "reason": "high fan-in (14 in, 10 out)"
+    },
+    {
+      "name": "len",
+      "layer": "leaf",
+      "reason": "only inbound calls, no outbound"
+    },
+    {
+      "name": "main",
+      "layer": "entry",
+      "reason": "only outbound calls"

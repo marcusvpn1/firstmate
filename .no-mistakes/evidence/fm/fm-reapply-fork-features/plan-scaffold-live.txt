@@ -1,0 +1,17 @@
+=== fm-brief.sh --plan (live) ===
+scaffolded: /tmp/fm-manual-plan.1KEiIA/data/plan-live-1/brief.md (plan; replace {TASK} and {FIRSTMATE_SPEC})
+--- exit: 0 ---
+=== plan brief: task declaration + definition of done ===
+17:This is a PLAN task: the deliverable is a structured implementation plan, not a PR.
+18-The worktree is your laboratory - install, run, edit, and make scratch commits freely; all of it is discarded at teardown.
+19-The plan is the only thing that survives, so anything worth keeping must be in it.
+20-
+21:**Before writing the plan,** load `/Users/marcusnascimento/.no-mistakes/worktrees/2e94fa377077/01M21JTCD568DCKK9JQ94ECT1N/.agents/skills/spec-scaffold/SKILL.md` and follow its implementation plan template exactly.
+22:The skill is the single owner of the template structure, including the constitution check gate and the complexity tracking table.
+55:The plan must include every section from the template: technical context, constitution check gate (read the project's `AGENTS.md` and check every applicable rule), project structure (files to create/modify/delete with one-sentence responsibilities), interfaces (consumes/produces/contracts), and complexity tracking (every design decision that adds complexity beyond the simplest approach, with justification).
+=== mode refusal on --plan ===
+error: --mode applies only to ship briefs; a scout, spec, or plan delivers a report and a secondmate charter is not a delivery contract
+exit: 1
+=== spec without repo refusal ===
+error: --spec requires <task-id> <repo-name>
+exit: 1

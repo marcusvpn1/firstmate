@@ -1,0 +1,130 @@
+FM_TEST_BEGIN 2026-09-09T00:00:14Z tests/fm-daemon.test.sh family=watcher-wake-lock expected_gate_skip=none
+ok - fm-afk-start.sh fails before daemon startup when the afk flag cannot be written
+ok - fm-afk-start.sh ignores stale pidfile-only live pids
+ok - fm-afk-start.sh reclaims stale daemon locks whose live pid identity no longer matches
+ok - supervise daemon state root is scoped by FM_HOME
+ok - routine signal self-handles
+ok - captain-relevant status verbs escalate
+ok - check + unknown escalate; heartbeat self-handles
+ok - transient stale self-handles and records a persistence marker
+ok - enriched stale wedges bypass status absorption except under a declared wait, without disturbing busy workers
+ok - an enriched wedge under a declared wait uses the pause cadence and restores wedge detection on resume
+ok - stale + terminal status escalates immediately
+ok - stale escalation and current wait cadence remain independent
+ok - paused reasons with captain phrases remain pause-classified
+ok - a captain-held transfer classifies as pause, not as a wedge candidate
+ok - handle_wake on a paused stale records a pause marker, drops the wedge marker, and does not escalate
+ok - handle_wake records a declared pause from a routine signal for long-cadence rechecks
+ok - a terminal signal clears pause and stale tracking across both supervisors
+ok - housekeeping migrates a normal-watcher's declared pause into daemon tracking
+ok - housekeeping clears an already-resumed watcher pause across both supervisors
+ok - housekeeping seeds pause tracking from status without a watcher marker
+ok - persistent stale escalates after threshold and clears its marker
+ok - resumed (busy) stale clears its marker without escalating
+ok - housekeeping re-surfaces a stale declared pause on the long cadence and resets its window
+ok - housekeeping re-surfaces a forgotten captain hold on the long cadence and resets its window
+ok - a busy pane cannot gate the pause clear once its crew's status no longer declares the wait
+ok - housekeeping matures a busy pane's declared-wait window into exactly one recheck per window
+ok - housekeeping clears a paused marker once the crew is no longer declaring the pause
+ok - housekeeping clears the pause marker once a captain hold is answered
+ok - housekeeping moves an existing stale marker to pause before wedge escalation
+ok - housekeeping moves a captain hold's existing stale marker to pause before wedge escalation
+ok - housekeeping clears tracking when a crew leaves pause
+ok - persistent herdr stale resolves the target from metadata and escalates
+ok - herdr idle busy-footer stale clears through capture corroboration
+ok - resumed herdr stale clears through backend-aware busy state
+ok - persistent Orca stale resolves the terminal from metadata
+ok - multiple escalations flush as a single batched digest
+ok - batch flush measures max-delay from the first append, not the last
+ok - catch-all scan escalates a missed terminal once, not twice
+ok - handle_wake routes routine->self and captain->escalate
+ok - INJECT_SKIP forces self-handle, bypassing captain-relevant classification
+ok - is_wake_reason distinguishes watcher wake reasons from singleton-status stdout
+ok - terminal-stale escalate removes its marker so housekeeping does not re-escalate
+ok - captain signal escalate marks seen so the catch-all scan does not re-fire
+ok - _collapse_newlines replaces newlines with literal separator
+ok - afk flag absent: daemon does not inject, buffer preserved
+ok - busy-guard defers injection when supervisor pane is busy
+ok - marker detection: marker -> stay afk, no marker -> exit afk
+ok - /afk invocation is exempt from afk exit (no self-cancel)
+ok - should_exit_afk returns false when afk is not active
+ok - strip_injection_marker removes the sentinel marker cleanly
+ok - pane_input_pending detects partial input on the cursor line
+ok - pane_input_pending: a blank unidentified cursor row defers (strict container-proof rule)
+ok - pane_input_pending: only proven empty agent prompts pass
+ok - fm_tmux_composer_state: a bare shell prompt ($/%/#/>) reads unknown, never empty (dead-shell injection safety)
+ok - fm_tmux_composer_state: a bordered composer box and bare agent glyphs (❯/›) still read empty
+ok - fm_tmux_composer_state: only matching edge borders form a composer box
+ok - pane_input_pending preserves bright placeholder-like drafts in styled captures
+ok - classify_signal dedupes against the catch-all scan seen marker
+ok - turn-end markers stay routine while mixed actionable status batches escalate
+ok - an actionable event is escalated to an away captain despite later routine appends
+ok - the daemon commits exactly the endpoint captured by classification
+ok - a stale wake escalates a blocker hidden by later progress
+ok - a stale span read failure surfaces without advancing its marker
+ok - a recreated status rejects the old captured identity
+ok - an unverifiable status identity surfaces without advancing markers
+ok - a status read failure surfaces without advancing the daemon suppressor
+ok - catch-all routine scans advance before later actionable appends
+ok - failed escalation writes retain durable wakes and classification positions
+ok - catch-all markers advance only after escalation buffering succeeds
+ok - classification failure retains the complete durable wake batch
+ok - missing-status stale wakes remain ordinary and acknowledgeable
+ok - transient unreadable signals recover without advancing their position
+ok - daemon catch-all reclassifies permission-recovered status content
+ok - a permanent classification failure is reported, acknowledged, and never advances its position
+ok - the away-mode catch-all scan surfaces a masked event once
+ok - classify_stale dedupes against the signal path seen marker
+ok - AFK nonterminal working:+merged keeps wedge aging and re-escalates at bound
+ok - genuine done: and merge-check events still escalate
+ok - pane_input_pending: an idle bordered composer is NOT pending (afk-invx-i5)
+ok - pane_input_pending: text inside a bordered composer is still pending
+ok - submit-ACK confirms a submit when the composer returns to a bordered-empty box
+ok - submit-ACK reports pending on a persistently swallowed Enter (type-once)
+ok - max-defer on an empty stuck pane types once, alarms, and preserves the buffer
+ok - max-defer flushes and clears the buffer on an empty bordered pane
+ok - max-defer on a pending composer alarms without typing
+ok - normal flush clears a stale wedge marker
+/Users/marcusnascimento/.no-mistakes/worktrees/2e94fa377077/01M21JTCD568DCKK9JQ94ECT1N/bin/fm-supervise-daemon.sh: line 734: /private/var/folders/g4/59qz1wq10jg542cxg72cscp40000gn/T/fm-daemon-tests.dONxKW/redelivery-guard/state/.subsuper-escalations: Permission denied
+ok - escalate_flush suppresses verbatim redelivery after a buffer-clear failure and alarms once
+ok - below MAX_DEFER: no inject, no alarm, buffer preserved
+ok - max-defer does not flush or alarm while afk is inactive
+ok - library mode: sourcing the daemon defaults FM_WEDGE_ALARM_EXEC to discard (no test can fire a real notification)
+ok - wake helpers replace inherited notifier overrides with the safe recorder
+ok - the discard seam suppresses every notifier, including command: (fires nothing)
+ok - direct notifier helpers honor the discard seam, including command:
+ok - osascript channel routes through the notifier seam with the summary (never a real notification)
+ok - herdr channel routes through the notifier seam with the summary (never a real notification)
+ok - command channel runs the captain command with the summary on $1 and on stdin
+ok - command channel failures redact configured commands while logging their exit status
+ok - unknown channel directives are redacted while the alarm keeps running
+ok - off disables every active alert regardless of directive position (marker and tmux flash are unaffected)
+ok - auto resolves to the macOS osascript notifier on Darwin (default-on)
+ok - auto on a non-macOS platform selects no built-in OS channel (the marker or a configured command carries it)
+ok - config/wedge-alarm selects every configured channel and skips comment and blank lines
+ok - a failing channel logs and falls back to the next channel, never crashing the alarm
+ok - a hung notifier is bounded, logged, and falls through to the next channel
+ok - a backgrounded command notifier remains bounded until its process group is reaped
+ok - a hung notifier override is bounded, logged, and proceeds to the next channel
+ok - daemon shutdown stops and reaps the active notifier process group
+ok - inject_wedge_alarm writes the marker AND emits the active alert even with no tmux status-line (herdr backend)
+ok - in-process wedge throttle prevents alert spam when the marker cannot persist
+ok - fm-send returns 3 with a non-error no-resend warning when confirmation stays pending
+ok - fm-send exits non-zero when initial text send fails
+ok - fm-send exits non-zero unless delivery is proven empty
+ok - discover_supervisor_backend: override > TMUX_PANE > HERDR_ENV+HERDR_PANE_ID > tmux fallback
+ok - discover_supervisor_target: override > TMUX_PANE > herdr '<session>:<pane-id>' composition > firstmate:0 fallback
+ok - pane_is_busy: herdr native busy_state='busy' short-circuits without a capture fallback
+ok - primary busy guard isolates rendered signatures by detected harness
+ok - pane_is_busy: omitted backend defaults to tmux for Grok's isolated fallback
+ok - pane_input_pending: dispatches through fm_backend_composer_state for backend=herdr
+ok - inject_msg: herdr busy-guard defers before ever attempting a submit
+ok - inject_msg: herdr composer-guard defers before ever attempting a submit
+ok - inject_msg: herdr pane-gone check defers before any busy/composer/submit call
+ok - inject_msg: dispatches busy-guard/composer-guard/submit through the herdr backend and succeeds on a confirmed empty composer
+ok - inject_msg: defers on a dead-shell/unreadable composer (unknown), never typing the escalation into a shell
+ok - inject_msg: unrecognized composer states defer by default
+FM_TEST_END 2026-09-09T00:01:08Z tests/fm-daemon.test.sh exit=0 duration_ms=53836 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=53940
+FM_TEST_SUMMARY_FAMILY family=watcher-wake-lock count=1 duration_ms=53836 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-daemon.test.sh duration_ms=53836

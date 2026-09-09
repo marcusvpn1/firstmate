@@ -1,0 +1,23 @@
+=== codebase-memory-mcp cli list_projects (live backend, project count) ===
+projects: 21
+
+=== search_graph against the real 'local-ai-server' index ===
+{
+    "total": 1,
+    "search_mode": "bm25",
+    "results": [
+        {
+            "name": "main",
+            "qualified_name": "local-ai-server.__branch__.main",
+            "label": "Branch",
+            "file_path": "{}",
+            "start_line": 0,
+            "end_line": 0,
+            "rank": -1.2496697490092472e-06
+        }
+    ],
+    "has_more": false
+}
+
+=== get_architecture against 'local-ai-server' (aspects=layers) ===
+{"project":"local-ai-server","total_nodes":11,"total_edges":10}

@@ -1,0 +1,28 @@
+=== cbmm_list_projects (no project resolution needed) ===
+TOOL=cbmm_list_projects cwd=/tmp
+{
+  "projects": [
+    {
+      "name": "wellness-system",
+      "root_path": "/Users/marcusnascimento/Projects/wellness-system",
+      "git": {
+        "is_git": true,
+        "is_worktree": false,
+        "is_detached": false,
+        "root_exists": true,
+        "worktree_root": "/Users/marcusnascimento/Projects/wellness-system",
+        "git_dir": ".git",
+       
+
+=== cbmm_search_graph with EXACT root_path cwd -> resolves wellness-system ===
+TOOL=cbmm_search_graph cwd=/Users/marcusnascimento/Projects/wellness-system
+{
+  "total": 0,
+  "search_mode": "bm25",
+  "results": [],
+  "has_more": false
+}
+
+=== cbmm_search_graph from a git WORKTREE cwd (multi-project) -> must fail loud ===
+TOOL=cbmm_search_graph cwd=/Users/marcusnascimento/.no-mistakes/worktrees/2e94fa377077/01M21JTCD568DCKK9JQ94ECT1N
+Error: no codebase-memory index found. Run 'codebase-memory-mcp cli index_repository --repo-path <path> --mode full' first.

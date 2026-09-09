@@ -1,0 +1,17 @@
+=== fm-promote.sh spec -> ship (live, default DATA) ===
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /Users/marcusnascimento/.no-mistakes/worktrees/2e94fa377077/01M21JTCD568DCKK9JQ94ECT1N/.pi/extensions/fm-primary-turnend-guard.ts -e /Users/marcusnascimento/.no-mistakes/worktrees/2e94fa377077/01M21JTCD568DCKK9JQ94ECT1N/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+promoted promote-spec-live to ship mode=no-mistakes yolo=off (teardown protection restored)
+wrote ship instructions for mode=no-mistakes: /tmp/fm-manual-promote.t4BqVv/data/promote-spec-live/ship-instructions.md
+next: FM_HOME=/tmp/fm-manual-promote.t4BqVv bin/fm-send.sh fm-promote-spec-live "$(cat /tmp/fm-manual-promote.t4BqVv/data/promote-spec-live/ship-instructions.md)"
+--- exit: 0 ---
+=== meta kind after promote ===
+kind=ship
+=== ship-instructions.md (promotion step + Spec line) ===
+12:5. This task was promoted from a spec. Load `/Users/marcusnascimento/.no-mistakes/worktrees/2e94fa377077/01M21JTCD568DCKK9JQ94ECT1N/.agents/skills/spec-scaffold/SKILL.md` and follow its commit-forward convention: read the spec at `/tmp/fm-manual-promote.t4BqVv/data/promote-spec-live/report.md`, commit the spec content into the right doc per `docs/specs/README.md`, resolve or explicitly re-open every `[NEEDS CLARIFICATION]` marker, and include a `Spec: docs/specs/<file>.md` line in `--intent` (no-mistakes) or the commit message (direct-PR/local-only).
+33:If this task was promoted from a spec or plan, include a `Spec: docs/specs/<file>.md` line in `--intent` referencing the committed spec so review can discover and verify it (see `.agents/skills/spec-scaffold/SKILL.md` for the commit-forward convention).
