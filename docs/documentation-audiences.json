@@ -225,6 +225,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/progress-ledger/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/project-management/SKILL.md",
       "audience": "agent-runtime"
     },
@@ -234,6 +238,10 @@
     },
     {
       "path": ".agents/skills/secondmate-provisioning/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/spec-scaffold/SKILL.md",
       "audience": "agent-runtime"
     },
     {
@@ -379,6 +387,10 @@
     {
       "path": "docs/scripts.md",
       "audience": "operator-current"
+    },
+    {
+      "path": "docs/specs/README.md",
+      "audience": "agent-runtime"
     },
     {
       "path": "docs/sessionstart-nudge.md",

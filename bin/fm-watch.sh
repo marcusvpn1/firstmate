@@ -1008,7 +1008,20 @@ busy_turn_bound_check() {  # <window> <task> <hash> <since-file> <escalation-fil
 
 clear_pause_state() {  # <window-key>
   local key=$1
-  rm -f "$STATE/.paused-$key" "$STATE/.paused-rechecked-$key" "$STATE/.paused-resurfaced-$key"
+  rm -f "$STATE/.paused-$key" "$STATE/.paused-rechecked-$key"
+}
+
+# Reset the re-surface throttle for a GENUINE pause end so a later NEW pause
+# starts its own cadence. Deliberately NOT part of clear_pause_state/clear_pause_tracking:
+# those fire on a transient classification flap (a still-paused crew whose
+# crew-state read briefly returns working/none), and clearing the throttle on
+# every flap collapsed the long PAUSE_RESURFACE_SECS recheck into a per-flap
+# burst (the 2026-08-18/19 paused-secondmate cadence anomaly). Only a status
+# line that is no longer paused/captain-held clears it.
+clear_pause_throttle() {  # <window>
+  local key
+  key=$(window_key "$1")
+  rm -f "$STATE/.paused-resurfaced-$key"
 }
 
 # The hash-scoped half of clear_pause_tracking: the stale suppressor, its wedge
@@ -2054,6 +2067,7 @@ EOF
     last=$(last_status_line "$STATE/$task.status")
     if ! status_is_paused_or_captain_held "$last" && [ -e "$STATE/.paused-$key" ]; then
       clear_pause_tracking "$key"
+      clear_pause_throttle "$w"
     fi
     # An idle secondmate endpoint is healthy by design, so a mate is admitted to
     # the pane-stale path ONLY to serve a status-declared wait's bounded

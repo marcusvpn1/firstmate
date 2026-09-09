@@ -1104,7 +1104,7 @@ crew_dispatch_validate() {
     return 0
   fi
   err=$(jq -r '
-    def verified($h): ["claude","codex","opencode","pi","pi-signed","grok","kimi","cursor","muse","rovo","omp"] | index($h);
+    def verified($h): ["claude","codex","opencode","pi","pi-signed","pi-qwen-alienware","grok","kimi","cursor","muse","rovo","omp"] | index($h);
     def effort_ok($h; $e):
       if $e == null then true
       elif ($e | type) != "string" then false

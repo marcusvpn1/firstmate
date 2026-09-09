@@ -3,7 +3,7 @@ name: harness-adapters
 description: >-
   Agent-only reference for firstmate harness operations.
   Use before spawning or recovering a crewmate or secondmate, handling a trust dialog, sending a harness-specific skill invocation, interrupting or exiting an agent, resuming an exited agent, or verifying a new harness adapter.
-  Contains verified facts for claude, codex, opencode, pi, pi-signed, grok, kimi, cursor, gemini, muse, rovo, and omp.
+  Contains verified facts for claude, codex, opencode, pi, pi-signed, pi-qwen-alienware, grok, kimi, cursor, gemini, muse, rovo, and omp.
 user-invocable: false
 metadata:
   internal: true
@@ -97,3 +97,50 @@ A new tool remains undispatchable until the `verify` plan, its harness entry, ev
   }
 }
 ```
+
+## codebase-memory-mcp MCP server
+
+Codebase-memory-mcp v0.9.0 is configured as an MCP server for crewmate harnesses.
+The codebase-memory-mcp binary, installed via its own install script and available on PATH, indexes the firstmate repo with `--mode full` (6,998 nodes, 27,390 edges, includes `bin/` and `docs/`).
+Validation evidence: `data/cbmm-firstmate-test/report.md` (fast-mode baseline) and `data/cbmm-moderate-test/report.md` (full-mode validation).
+
+**Harness support:**
+
+| Harness | Config path | Mechanism |
+|---------|-------------|-----------|
+| claude | `~/.claude/.mcp.json` (global) | Native MCP, tools auto-discovered |
+| codex | `~/.codex/config.toml` (global) | Native MCP, `[mcp_servers.codebase-memory-mcp]` |
+| opencode | `~/.config/opencode/opencode.json` (global) | Native MCP, `mcp` key |
+| grok | `.mcp.json` (project root) | Native MCP, Claude-compatible |
+| pi / pi-signed | `.pi/extensions/fm-cbmm-mcp.ts` (project-local) | Extension-registered tools via CLI |
+
+kimi and agy have no verified MCP integration surface.
+
+**Tool selection for crewmates:**
+
+| Query type | Tool | Notes |
+|-----------|------|-------|
+| Find function/symbol by name | `search_graph` | BM25 keyword search; use `name_pattern` for regex |
+| Find text/pattern in files | `search_code` | Ripgrep-like; fall back when `search_graph` misses |
+| Trace call dependencies | `query_graph` (Cypher) | `MATCH (a)-[r:CALLS]->(b) RETURN …` |
+| Codebase orientation | `get_architecture` | Layers, hotspots, clusters, boundaries |
+| Call-path from known function | `trace_path` | `direction=inbound\|outbound\|both` |
+| Read source for graph node | `get_code_snippet` | Use after `search_graph` to read matched code |
+| Check index availability | `list_projects` | Confirm project is indexed before other calls |
+
+**Index must be `--mode full`.** Fast and moderate modes exclude `bin/` and `docs/` — the core of the firstmate codebase.
+Full mode indexes 299 files including 213 Bash scripts in 1.39 seconds.
+The index artifact (`.codebase-memory/graph.db.zst`) is gitignored and cached under `~/.cache/codebase-memory-mcp/`.
+
+**Pi extension details.** The `.pi/extensions/fm-cbmm-mcp.ts` extension registers `cbmm_search_graph`, `cbmm_search_code`, `cbmm_query_graph`, `cbmm_get_architecture`, `cbmm_trace_path`, `cbmm_get_code_snippet`, and `cbmm_list_projects`.
+Each tool shells out to `codebase-memory-mcp cli <tool>` and returns JSON.
+The project ID is resolved once per session from `list_projects` matching the current cwd.
+Error output (the `level=info msg=mem.init` line on stderr) is suppressed.
+
+## pi-qwen-alienware (EXPERIMENTAL 2026-08-17)
+
+This is a one-shot scout adapter, not an interactive Pi-family primary or secondmate harness.
+Select it explicitly with `--scout --harness pi-qwen-alienware --model ollama-alienware/qwen3:8b` while the worker-only SSH tunnel is available on localhost port 21434.
+`bin/fm-pi-qwen-alienware.py` owns the deny-default sandbox, scrubbed environment, tool allowlist, 300-second default process-group deadline, report-only durable write boundary, and structured run record.
+It refuses ship launches, exposes no shell tool, requires a clean worktree after completion, and reports failure when the report is absent.
+Do not recover it as an interactive Pi pane; inspect `data/<task>/run-record.json`, the task status, and the durable report instead.
