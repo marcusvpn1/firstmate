@@ -1332,7 +1332,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   }
 elif [ "$KIND" = secondmate ]; then
   case "${POS[1]:-}" in
-    ''|claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|cursor|gemini|muse|rovo|omp)
+    ''|claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|cursor|gemini|muse|rovo|omp|agy)
       ARG3=${POS[1]:-}
       ;;
     *' '*)
@@ -1551,6 +1551,18 @@ launch_template() {
     # Its turn-end signal is a globally configured Stop hook plus a guarded
     # per-task worktree token, so no launch placeholder belongs here.
     kimi) printf '%s' '__KIMIBIN__ __MODELFLAG__--auto' ;;
+    # AGY is a headless harness that runs `agy -p` (--print) to process the
+    # brief non-interactively and exits when done.
+    # It runs inside a PTY (tmux pane) so it sees a TTY; piped stdout is NOT
+    # the protocol. The watcher captures the pane after exit and validates the
+    # per-run result.json artifact. Exit code 0 is not trusted - only a valid
+    # result.json with status=success counts as completion.
+    # AGY does not support interactive steer or turn-end hooks, so there is no
+    # harness-specific hook installed below and no secondmate support.
+    # Model and effort flags are passed inline; unsupported effort values are
+    # omitted rather than guessed.
+    # The --log-file flag writes AGY's internal log to the task temp directory.
+    agy) printf '%s' 'agy -p --output-format json --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     # muse (Muse Code): a positional prompt starts the supervised interactive
     # session. --yolo is the single flag that makes a crewmate pane viable: muse
     # ships approval prompts AND a filesystem/network sandbox ON by default
@@ -1855,7 +1867,7 @@ model_flag_for_harness() {
   local harness=$1 model=$2
   [ -n "$model" ] && [ "$model" != default ] || return 0
   case "$harness" in
-    claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|cursor|gemini|muse|rovo|omp)
+    claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|cursor|gemini|muse|rovo|omp|agy)
       printf -- '--model %s ' "$(shell_quote "$model")"
       ;;
   esac
@@ -1899,6 +1911,13 @@ effort_flag_for_harness() {
       # a superset of the shared vocabulary, so every level maps straight across.
       case "$effort" in
         low|medium|high|xhigh|max) printf -- '--thinking %s ' "$(shell_quote "$effort")" ;;
+      esac
+      ;;
+    agy)
+      # AGY supports --effort with low|medium|high as of 1.1.8.
+      # xhigh and max are not accepted and are omitted rather than guessed.
+      case "$effort" in
+        low|medium|high) printf -- '--effort %s ' "$(shell_quote "$effort")" ;;
       esac
       ;;
     muse)
@@ -3536,6 +3555,11 @@ EOF
       printf 'token=%s\n' "${auth_file##*/}" > "$WT/.fm-kimi-turnend"
       exclude_path '.fm-kimi-turnend'
       ;;
+    agy*)
+      # AGY is headless - it runs, prints JSON, and exits.
+      # No turn-end hook is needed; the watcher detects completion by
+      # capturing the pane and validating the result.json artifact.
+      ;;
   esac
 fi
 
@@ -3761,10 +3785,12 @@ sq_status=$(shell_quote "$STATE/$ID.status")
 sq_runrecord=$(shell_quote "$DATA/$ID/run-record.json")
 sq_tasktmp=$(shell_quote "$TASK_TMP")
 sq_id=$(shell_quote "$ID")
+sq_agylog=$(shell_quote "$TASK_TMP/agy.log")
 MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT")
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
 LAUNCH=${LAUNCH//__EFFORTFLAG__/$EFFORTFLAG}
+LAUNCH=${LAUNCH//__AGYLOGFILE__/$sq_agylog}
 if [ "$HARNESS" = rovo ]; then
   ROVOCONFIGOVERRIDE=$(rovo_config_override_flag "$EFFORT" "$DATA" "$STATE" "$ID") || {
     echo "error: could not resolve this task's home paths for rovo's allowedExternalPaths grant" >&2
