@@ -14,9 +14,11 @@ import time
 from typing import Optional
 
 
-DEFAULT_PI = Path("/Users/marcusnascimento/.npm-global/bin/pi")
+import os
+DEFAULT_PI = Path(os.path.expanduser("~/.npm-global/bin/pi"))
 DEFAULT_TOOLCALL_PROXY = Path(__file__).resolve().parent / "fm-toolcall-fallback-proxy.py"
-NODE_PATH = "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/marcusnascimento/.npm-global/bin"
+# The minimal PATH required for pi to run correctly.
+NODE_PATH = "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + os.path.expanduser("~/.npm-global/bin")
 
 
 def free_loopback_port() -> int:
@@ -153,7 +155,7 @@ def main() -> int:
   (subpath "/Library/Developer/CommandLineTools")
   (subpath "/private/etc/ssl")
   (subpath "/opt/homebrew")
-  (subpath "/Users/marcusnascimento/.npm-global")
+  (subpath "{quote_sandbox(os.path.expanduser('~/.npm-global'))}")
   (literal "{quote_sandbox(args.pi.resolve())}")
   (subpath "{quote_sandbox(args.worktree.resolve())}")
   (subpath "{quote_sandbox(args.task_tmp.resolve())}")

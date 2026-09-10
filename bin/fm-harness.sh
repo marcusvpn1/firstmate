@@ -161,6 +161,7 @@ detect_own() {
       # named `claude` with its own node child, and that fallback's *claude*
       # args glob would otherwise claim it if that subtree were ever walked.
       omp) echo omp; return ;;
+      *agy*) echo agy; return ;;
       node*|python*)
         # Bare interpreter: match the harness name in its script path.
         args=$(ps -o args= -p "$pid" 2>/dev/null)
