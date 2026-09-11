@@ -150,6 +150,7 @@ test_agy_launch_template_contract() {
   out=$(bash -c '. "$1"; fm_agy_launch_template' _ "$AGY_LIB")
   assert_contains "$out" 'agy --output-format json' "template missing invocation/output mode"
   assert_contains "$out" '--dangerously-skip-permissions' "template missing permission flag"
+  assert_contains "$out" '--add-dir __WORKTREE__' "template missing the worktree --add-dir"
   # shellcheck disable=SC2016 # literal search string: the -p= placeholder
   assert_contains "$out" '-p="$(__OPINPUT__ encode launch-brief < __BRIEF__)"' "template missing the -p= attached prompt"
   assert_contains "$out" '> __AGYRESULT__.tmp' "template missing generation-bound redirect"
@@ -336,6 +337,21 @@ test_agy_result_success_rejects_error() {
     fail "result_success returned true for ERROR"
   fi
   pass "result_success returns false for status ERROR"
+}
+
+test_agy_denied_actions_not_success() {
+  local dir
+  dir="$TMP_ROOT/result-denied"
+  mkdir -p "$dir"
+  # status SUCCESS but a tool action was auto-denied: a real agy field that
+  # must validate, yet never count as success (the work did not happen).
+  printf '{"status":"SUCCESS","response":"","conversation_id":"","duration_seconds":0,"num_turns":0,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0},"denied_actions":[{"action":"command","display_name":"RunCommand"}]}\n' > "$dir/result.json"
+  bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$dir/result.json" >/dev/null \
+    || fail "validate rejected a real denied_actions result"
+  if bash -c '. "$1"; fm_agy_result_success "$2"' _ "$AGY_LIB" "$dir/result.json"; then
+    fail "result_success returned true when a tool action was denied"
+  fi
+  pass "denied_actions validates as a real field but never counts as success"
 }
 
 # ---- cleanup --------------------------------------------------------------
@@ -603,6 +619,7 @@ test_agy_validate_rejects_unknown_status
 test_agy_validate_rejects_oversized_file
 test_agy_result_success_detects_status
 test_agy_result_success_rejects_error
+test_agy_denied_actions_not_success
 test_agy_cleanup_removes_result_artifacts
 test_agy_is_running
 test_agy_is_running_not_idle_shell

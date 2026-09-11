@@ -1517,12 +1517,15 @@ The real `agy --output-format json` result object on success is:
 ```
 
 and on error the same object carries `status` `ERROR`, a present `error` string, an empty `conversation_id`, `num_turns` `0`, and exit code `1`.
-`bin/fm-agy-lib.sh` validates this schema strictly: malformed JSON, unknown top-level or usage keys, wrong types, and unknown statuses all fail closed.
+When a tool action is auto-denied, the object also carries `denied_actions` (an array of `{action, display_name}`); a `SUCCESS` result with a non-empty `denied_actions` is a failed task because the work did not happen.
+`bin/fm-agy-lib.sh` validates this schema strictly: malformed JSON, unknown top-level or usage keys, wrong types, and unknown statuses all fail closed, and success requires both `status` `SUCCESS` and no denied actions.
 
 ### Launch shape and the dashline bug
 
 A bare `agy -p <prompt>` is broken: `-p` swallows the next flag as its prompt and ignores the real prompt.
 The prompt must be attached with `=` (`-p="<prompt>"`), which `fm_agy_launch_template` now places with the flags first.
+`--dangerously-skip-permissions` is load-bearing: without it, headless mode cannot prompt for the `command` (bash) permission and auto-denies it, so no file work happens.
+`--add-dir <worktree>` is also load-bearing: without it, agy's file tool writes into `~/.gemini/antigravity-cli/scratch/` rather than the task worktree (observed 2026-09-11: a create-file prompt wrote to the scratch dir until `--add-dir` was added, after which it wrote to the worktree).
 
 ### Process identity and children
 

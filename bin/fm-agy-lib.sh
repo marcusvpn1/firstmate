@@ -29,12 +29,16 @@
 #     "status": "SUCCESS" | "ERROR",      # uppercase terminal status
 #     "response": string,                 # model text ("" on error)
 #     "error": string,                    # present only on error
+#     "denied_actions": [ {..}, .. ],     # present when a tool action is auto-denied
 #     "duration_seconds": number,
 #     "num_turns": number,
 #     "usage": { "input_tokens": number, "output_tokens": number,
 #                "thinking_tokens": number, "cache_read_tokens": number,
 #                "total_tokens": number }
 #   }
+# A `status` of SUCCESS with a non-empty `denied_actions` is a FAILED task: the
+# conversation completed but a required tool action was denied, so the work did
+# not happen. Success therefore requires SUCCESS and no denied actions.
 # Validation is strict: malformed JSON, unknown top-level keys, unknown usage
 # keys, wrong types, a missing terminal status, or an oversized artifact all
 # fail closed. jq is a hard dependency for validation and interpretation; its
@@ -169,7 +173,7 @@ fm_agy_effort_flag() {  # <effort>
 #   __BRIEF__       brief file path
 fm_agy_launch_template() {
   # shellcheck disable=SC2016 # template literal: placeholders expand in the pane
-  printf '%s' 'agy --output-format json --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ -p="$(__OPINPUT__ encode launch-brief < __BRIEF__)" > __AGYRESULT__.tmp; rc=$?; mv -f __AGYRESULT__.tmp __AGYRESULT__; exit $rc'
+  printf '%s' 'agy --output-format json --dangerously-skip-permissions --add-dir __WORKTREE__ __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ -p="$(__OPINPUT__ encode launch-brief < __BRIEF__)" > __AGYRESULT__.tmp; rc=$?; mv -f __AGYRESULT__.tmp __AGYRESULT__; exit $rc'
 }
 
 # ---- result publication ---------------------------------------------------
@@ -230,7 +234,7 @@ fm_agy_validate_result() {  # <result_file>
   }
 
   out=$(jq -e '
-    def allowed: ["conversation_id","status","response","error","duration_seconds","num_turns","usage"];
+    def allowed: ["conversation_id","status","response","error","denied_actions","duration_seconds","num_turns","usage"];
     def usage_allowed: ["input_tokens","output_tokens","thinking_tokens","cache_read_tokens","total_tokens"];
     type == "object"
     and (all(keys_unsorted[]; . as $k | allowed | index($k) != null))
@@ -243,6 +247,7 @@ fm_agy_validate_result() {  # <result_file>
     and (.duration_seconds | type == "number")
     and (.num_turns | type == "number")
     and (if has("error") then (.error | type == "string") else true end)
+    and (if has("denied_actions") then (.denied_actions | type == "array") else true end)
     and (.usage | type == "object")
     and (all(.usage | keys_unsorted[]; . as $k | usage_allowed | index($k) != null))
     and (.usage.input_tokens | type == "number")
@@ -267,13 +272,15 @@ fm_agy_validate_result() {  # <result_file>
 # dependency here, and its absence fails explicitly rather than reporting a
 # silent false. Callers must validate first; this only interprets.
 fm_agy_result_success() {  # <result_file>
-  local result_file=$1 status
+  local result_file=$1 status denied
   command -v jq >/dev/null 2>&1 || {
     printf 'interpret-error: jq required for agy result interpretation\n' >&2
     return 1
   }
   status=$(jq -r '.status // empty' "$result_file" 2>/dev/null || true)
-  [ "$status" = SUCCESS ]
+  [ "$status" = SUCCESS ] || return 1
+  denied=$(jq -r '(.denied_actions | length) // 0' "$result_file" 2>/dev/null || true)
+  [ "$denied" = 0 ]
 }
 
 fm_agy_result_status() {  # <result_file>

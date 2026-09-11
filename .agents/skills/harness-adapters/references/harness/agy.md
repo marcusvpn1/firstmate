@@ -14,12 +14,13 @@ The installed binary auto-updates, so the exact version pin is load-bearing: `bi
 | Version | Exact pin `FM_AGY_PINNED_VERSION` (default `1.2.1`); `fm_agy_version_pinned` refuses a mismatch. |
 | Kind | Crewmate and scout only. No secondmate, no primary (no turn-end hook, no primary supervision protocol). |
 | Backend | tmux only. Every other backend is refused before an endpoint is created. |
-| Launch | `agy --output-format json --dangerously-skip-permissions <--model> <--effort> --print-timeout Ns --log-file <log> -p="<encoded brief>"`, owned by `fm_agy_launch_template` in `../../../bin/fm-agy-lib.sh`. |
+| Launch | `agy --output-format json --dangerously-skip-permissions --add-dir <worktree> <--model> <--effort> --print-timeout Ns --log-file <log> -p="<encoded brief>"`, owned by `fm_agy_launch_template` in `../../../bin/fm-agy-lib.sh`. |
+| Worktree write | `--add-dir <worktree>` is load-bearing: without it agy's file tool writes into `~/.gemini/antigravity-cli/scratch/` instead of the task worktree. |
 | One-shot | A single `-p` (print) invocation processes the brief and exits. No TUI, no interactive steer, no data-plane steering, no turn-end hook. |
 | Prompt flag | The prompt must be attached to `-p` with `=` (`-p="..."`). A bare `-p <flag>` swallows the next flag as its prompt and ignores the real prompt (the "dashline" bug). |
 | Models | `agy models` lists the current catalog (observed: `gemini-3.8/3.7/3.6-flash-{high,medium,low}`, `gemini-3.1-pro-{high,low}`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`). The model flag passes through; agy rejects an unknown model with a nonzero exit and an `ERROR` result. |
 | Effort | `--effort low\|medium\|high` only. `xhigh` and `max` are unsupported and omitted, never guessed. |
-| Result | One JSON object on stdout, `--output-format json`, with schema `{conversation_id, status, response, error?, duration_seconds, num_turns, usage}` and `status` being `SUCCESS` or `ERROR` (uppercase). Completion is proven only by a validated, generation-bound result artifact, never by exit code alone. |
+| Result | One JSON object on stdout, `--output-format json`, with schema `{conversation_id, status, response, error?, denied_actions?, duration_seconds, num_turns, usage}` and `status` being `SUCCESS` or `ERROR` (uppercase). `denied_actions` is present when a tool action is auto-denied, and a `SUCCESS` result with a non-empty `denied_actions` is a failed task, not a success. Completion is proven only by a validated, generation-bound result artifact, never by exit code alone. |
 | Result publication | stdout is redirected to a per-generation temp file and atomically renamed on completion, so a reader never sees a partial artifact (`fm_agy_publish_result`). |
 | Exit | Exit code `0` on success and `1` on error, but the result artifact is the source of truth for completion. |
 | Control | Refused. Interrupt/exit/relaunch postconditions are unverified against the live binary, so `../../../bin/fm-control-lib.sh` omits agy and the control plane refuses its verbs. |
