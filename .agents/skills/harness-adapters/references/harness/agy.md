@@ -21,6 +21,7 @@ The installed binary auto-updates, so the exact version pin is load-bearing: `bi
 | Models | `agy models` lists the current catalog (observed: `gemini-3.8/3.7/3.6-flash-{high,medium,low}`, `gemini-3.1-pro-{high,low}`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`). The model flag passes through; agy rejects an unknown model with a nonzero exit and an `ERROR` result. |
 | Effort | `--effort low\|medium\|high` only. `xhigh` and `max` are unsupported and omitted, never guessed. |
 | Result | One JSON object on stdout, `--output-format json`, with schema `{conversation_id, status, response, error?, denied_actions?, duration_seconds, num_turns, usage}` and `status` being `SUCCESS` or `ERROR` (uppercase). `denied_actions` is present when a tool action is auto-denied, and a `SUCCESS` result with a non-empty `denied_actions` is a failed task, not a success. Completion is proven only by a validated, generation-bound result artifact, never by exit code alone. |
+| Environment scrub | The launch template unsets `STITCH_X_GOOG_API_KEY`, `STITCH_API_KEY`, `ANTHROPIC_API_KEY`, `APIFY_API_KEY`, `HF_TOKEN`, and every other `*_API_KEY` / `*_TOKEN` / `*_SECRET` var in the pane shell before agy runs, so agy's MCP children never inherit ambient credentials; the operator's own shell is untouched (`fm_agy_env_scrub_code`). |
 | Result publication | stdout is redirected to a per-generation temp file and atomically renamed on completion, so a reader never sees a partial artifact (`fm_agy_publish_result`). |
 | Exit | Exit code `0` on success and `1` on error, but the result artifact is the source of truth for completion. |
 | Control | Refused. Interrupt/exit/relaunch postconditions are unverified against the live binary, so `../../../bin/fm-control-lib.sh` omits agy and the control plane refuses its verbs. |
@@ -48,6 +49,10 @@ jq is a hard dependency for validation and interpretation; its absence fails exp
 
 ## Not verified
 
-The permission boundary remains unproven: agy spawns MCP children that expose a Google API key in process arguments and carry unbounded network access, and `--sandbox` is unverified.
+The permission boundary is now handled by two explicit, documented limitations rather than left as an open question:
+
+1. **Scrubbed launch environment.** `fm_agy_env_scrub_code` unsets the named ambient secrets (`STITCH_X_GOOG_API_KEY`, `STITCH_API_KEY`, `ANTHROPIC_API_KEY`, `APIFY_API_KEY`, `HF_TOKEN`) plus every other `*_API_KEY` / `*_TOKEN` / `*_SECRET` var in the pane shell before agy runs, so no ambient credential reaches agy's MCP children. The operator's own shell (and the Stitch MCP server it feeds) is untouched.
+2. **Unverified MCP sandbox.** Agy's MCP children are treated as network-unrestricted: their `--sandbox` behavior is unverified, so no permission proof exists for their network or home access.
+
 Live liveness through the tmux backend, the generation-bound result publication, and a full end-to-end Hello World spawn are verified on agy 1.2.1 (`../../../../docs/verification/runtime-backends.md`).
-Until the permission boundary is decided, agy stays out of the verified adapter list and fails closed wherever it is named.
+Until promotion is granted, agy stays out of the verified adapter list and fails closed wherever it is named.

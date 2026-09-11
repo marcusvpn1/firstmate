@@ -22,6 +22,12 @@
 #   observes a half-written result.
 # - Version: exact pin (FM_AGY_PINNED_VERSION, default 1.2.1). A mismatch
 #   refuses launch; it is never a warning.
+# - Environment scrub: the launch template unsets the named ambient secrets
+#   (STITCH_X_GOOG_API_KEY, STITCH_API_KEY, ANTHROPIC_API_KEY, APIFY_API_KEY,
+#   HF_TOKEN) and every other *_API_KEY / *_TOKEN / *_SECRET var in the pane
+#   shell before agy runs, so agy's MCP children never inherit ambient
+#   credentials. The operator's own shell (and the Stitch MCP server it feeds)
+#   is untouched: the unset happens only in the pane shell.
 #
 # Result schema (the real `--output-format json` object, observed 1.2.1):
 #   {
@@ -171,9 +177,19 @@ fm_agy_effort_flag() {  # <effort>
 #   __AGYRESULT__   per-generation result file path
 #   __OPINPUT__     fm-operational-input.sh path
 #   __BRIEF__       brief file path
+# Emit the environment-scrub prefix that runs in the pane shell before agy. It
+# unsets the named ambient secrets plus every other *_API_KEY / *_TOKEN /
+# *_SECRET var, so agy and its MCP children never inherit ambient credentials.
+# The unset runs only in the pane shell that launches agy; the operator's own
+# environment (which feeds the Stitch MCP server) is left untouched.
+fm_agy_env_scrub_code() {
+  # shellcheck disable=SC2016 # emitted literally: expands in the pane shell
+  printf '%s' 'unset STITCH_X_GOOG_API_KEY STITCH_API_KEY ANTHROPIC_API_KEY APIFY_API_KEY HF_TOKEN 2>/dev/null; for _fm_agy_k in $(env | awk -F= "\$1 ~ /_API_KEY\$|_TOKEN\$|_SECRET\$/ {print \$1}"); do unset "$_fm_agy_k" 2>/dev/null; done; '
+}
+
 fm_agy_launch_template() {
   # shellcheck disable=SC2016 # template literal: placeholders expand in the pane
-  printf '%s' 'agy --output-format json --dangerously-skip-permissions --add-dir __WORKTREE__ __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ -p="$(__OPINPUT__ encode launch-brief < __BRIEF__)" > __AGYRESULT__.tmp; rc=$?; mv -f __AGYRESULT__.tmp __AGYRESULT__; chmod 600 __AGYRESULT__ 2>/dev/null; exit $rc'
+  printf '%s%s' "$(fm_agy_env_scrub_code)" 'agy --output-format json --dangerously-skip-permissions --add-dir __WORKTREE__ __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ -p="$(__OPINPUT__ encode launch-brief < __BRIEF__)" > __AGYRESULT__.tmp; rc=$?; mv -f __AGYRESULT__.tmp __AGYRESULT__; chmod 600 __AGYRESULT__ 2>/dev/null; exit $rc'
 }
 
 # ---- result publication ---------------------------------------------------

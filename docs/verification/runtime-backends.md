@@ -1530,7 +1530,7 @@ The prompt must be attached with `=` (`-p="<prompt>"`), which `fm_agy_launch_tem
 ### Process identity and children
 
 `ps -o comm=` reports the exact name `agy` for the agent process, so detection is anchored and never globbed.
-The run spawns a local `codebase-memory-mcp` child and an `npm exec mcp-remote https://stitch.googleapis.com/mcp` child whose arguments expose a Google API key, so the permission and credential-leakage boundary is not yet proven.
+The run spawns a local `codebase-memory-mcp` child and an `npm exec mcp-remote https://stitch.googleapis.com/mcp` child, so agy's MCP children are network-unrestricted; see the resolved permission boundary below.
 
 ### Model catalog
 
@@ -1553,8 +1553,12 @@ agy created `hello.txt` in the task worktree with exactly `Hello, World!\n`, the
 The result was atomically published to the generation-bound `/tmp/fm-<id>/result-<spawn_gen>.json` and validated as `status` `SUCCESS` with no `denied_actions`.
 This is the exact brief-and-spawn acceptance exercise the proof gate requires, and it passes on agy 1.2.1.
 
-### Permission boundary (open finding)
+### Permission boundary (resolved 2026-09-11)
 
-The run spawns two MCP children: a local `codebase-memory-mcp` and an `npm exec mcp-remote https://stitch.googleapis.com/mcp` whose process arguments expose a Google API key, so agy has unbounded network access and a credential visible in `ps` output.
-agy also reads `~/.gemini/antigravity-cli` state and, without `--add-dir`, writes files into `~/.gemini/antigravity-cli/scratch/` instead of the task worktree.
-The adapter does not yet prove the sandbox/permission boundary (`--sandbox` is unverified), so promotion to the verified list stays gated on a decision about this network/home/credential surface.
+The captain's 2026-09-11 decision closes the permission-boundary gap by scrubbing ambient secrets from agy's launch environment, and records two explicit limitations rather than leaving the boundary an open question:
+
+1. **Scrubbed launch environment.** `fm_agy_env_scrub_code` unsets `STITCH_X_GOOG_API_KEY`, `STITCH_API_KEY`, `ANTHROPIC_API_KEY`, `APIFY_API_KEY`, `HF_TOKEN`, and every other `*_API_KEY` / `*_TOKEN` / `*_SECRET` var in the pane shell before agy runs, so agy's MCP children never inherit ambient credentials. The operator's own shell (which feeds the Stitch MCP server) is untouched.
+2. **Unverified MCP sandbox.** agy's MCP children are treated as network-unrestricted: their `--sandbox` behavior is unverified, so no permission proof exists for their network or home access.
+
+The env scrub is verified by a portable behavior test (`tests/fm-agy-harness.test.sh`) that proves the emitted fragment removes every secret-patterned var while preserving unrelated vars, and by the live guard on agy 1.2.1.
+agy also reads `~/.gemini/antigravity-cli` state and, without `--add-dir`, writes files into `~/.gemini/antigravity-cli/scratch/` instead of the task worktree; `--add-dir` remains load-bearing for worktree writes.

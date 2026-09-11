@@ -156,10 +156,43 @@ test_agy_launch_template_contract() {
   assert_contains "$out" '> __AGYRESULT__.tmp' "template missing generation-bound redirect"
   assert_contains "$out" 'mv -f __AGYRESULT__.tmp __AGYRESULT__' "template missing atomic rename"
   assert_contains "$out" 'chmod 600 __AGYRESULT__' "template missing private-mode chmod"
+  assert_contains "$out" 'unset STITCH_X_GOOG_API_KEY STITCH_API_KEY ANTHROPIC_API_KEY APIFY_API_KEY HF_TOKEN' "template missing the ambient-secret scrub"
+  assert_contains "$out" '_API_KEY' "template missing the wildcard secret-pattern scrub"
   if printf '%s' "$out" | grep -q -- '-p '; then
     fail "template still uses the bare -p flag (the dashline bug)"
   fi
-  pass "launch template fixes the -p flag and redirects to a generation-bound temp file"
+  pass "launch template fixes the -p flag, redirects to a generation-bound temp file, and scrubs ambient secrets"
+}
+
+test_agy_env_scrub_removes_secrets_preserves_others() {
+  local out
+  # The emitted fragment must unset the named secrets plus every other
+  # *_API_KEY / *_TOKEN / *_SECRET var, while leaving unrelated vars intact.
+  out=$(STITCH_X_GOOG_API_KEY=sk1 STITCH_API_KEY=sk2 ANTHROPIC_API_KEY=ak APIFY_API_KEY=af HF_TOKEN=hf \
+        GITHUB_TOKEN=gh MY_CUSTOM_SECRET=sec KEEP_ME=kept PATH="$PATH" \
+        bash -c '
+    . "$1"
+    eval "$(fm_agy_env_scrub_code)"
+    for _v in STITCH_X_GOOG_API_KEY STITCH_API_KEY ANTHROPIC_API_KEY APIFY_API_KEY HF_TOKEN GITHUB_TOKEN MY_CUSTOM_SECRET; do
+      [ -z "${!_v:-}" ] || { printf "leaked:%s\n" "$_v"; exit 1; }
+    done
+    [ "${KEEP_ME:-}" = kept ] || { printf "dropped:KEEP_ME\n"; exit 1; }
+    printf "scrub-ok\n"
+  ' _ "$AGY_LIB" 2>&1) || {
+    fail "env scrub leaked a secret or dropped an unrelated var: $out"
+  }
+  assert_contains "$out" 'scrub-ok' "env scrub did not reach the ok marker"
+  pass "env scrub removes every secret-patterned var and preserves unrelated vars"
+}
+
+test_agy_env_scrub_does_not_mutate_operator_env() {
+  # The unset runs inside the pane shell only; the caller's own environment is
+  # left intact (the Stitch MCP server keeps its credentials).
+  STITCH_API_KEY=outer-secret
+  bash -c '. "$1"; eval "$(fm_agy_env_scrub_code)"' _ "$AGY_LIB" 2>/dev/null
+  [ "${STITCH_API_KEY:-}" = outer-secret ] || fail "env scrub mutated the operator's own environment"
+  unset STITCH_API_KEY
+  pass "env scrub leaves the operator's own shell environment untouched"
 }
 
 test_agy_effort_flag_omits_unsupported() {
@@ -604,6 +637,8 @@ test_agy_auth_status_failed
 test_agy_result_file_binds_generation
 test_agy_result_file_refuses_unsafe_task_id
 test_agy_launch_template_contract
+test_agy_env_scrub_removes_secrets_preserves_others
+test_agy_env_scrub_does_not_mutate_operator_env
 test_agy_effort_flag_omits_unsupported
 test_agy_publish_result_atomic
 test_agy_publish_result_rejects_empty
