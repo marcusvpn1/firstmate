@@ -1,8 +1,8 @@
 ---
 name: progress-ledger
 description: >-
-  Agent-only procedure for durable multi-task progress tracking that survives context compaction.
-  Load on every multi-task ship brief (the brief instructs it) and when stuck-crewmate-recovery reconciles work after a dead-endpoint or stale-crewmate event.
+  Agent-only procedure for durable progress tracking that survives context compaction and proactive relaunches.
+  Load on every usage-metered crewmate ship or scout brief, every multi-task ship brief, at secondmate idle checkpoints, and when stuck-crewmate-recovery reconciles work after a dead-endpoint or stale-crewmate event.
   Prevents catastrophic re-execution of completed tasks after context loss.
 user-invocable: false
 metadata:
@@ -11,9 +11,39 @@ metadata:
 
 # progress-ledger
 
-Use this procedure on every multi-task ship brief and when reconciling work after a crewmate endpoint dies or goes stale.
+Use this procedure on every multi-task ship brief, every ship or scout brief dispatched on a usage-metered model, at a usage-metered secondmate's natural idle checkpoint, and when reconciling work after a crewmate endpoint dies or goes stale.
 This skill is the single owner of the durable progress-ledger pattern.
 `bin/fm-classify-lib.sh` owns the keyed-status lifecycle; this skill owns the scratch ledger that preserves forward progress across compactions and crewmate restarts.
+
+## Proactive checkpoint and relaunch policy
+
+Apply this policy only when the worker's pinned model or harness is usage-metered.
+No harness currently exposes a reliable context-percentage signal, so use continued-work rounds as the proxy.
+
+### Crewmates
+
+For a ship or scout task, checkpoint at the existing natural boundary whenever possible, and after roughly 15-20 rounds of continued work without a clean stopping point.
+At the checkpoint, commit applicable work, append one substantive status line, and record the checkpoint in `.fm-progress.md`.
+Then request a relaunch with a continuation note via `bin/fm-control.sh <id> relaunch --note`, rather than continuing indefinitely in one session.
+The continuation note must identify the durable checkpoint and the next unfinished work.
+
+### Persistent secondmates
+
+Checkpoint only at a natural idle boundary already present in the secondmate workflow, such as immediately after tearing down a finished child task or immediately before dispatching the next one.
+Never relaunch mid-reasoning or while directly interacting with the captain.
+Skip this policy entirely when the pinned secondmate seat is flat-rate rather than usage-metered.
+At the boundary, record the durable state before requesting any relaunch, including a continuation note if relaunch is selected.
+
+### Primary firstmate
+
+Do not apply automatic or periodic relaunch to the primary firstmate session.
+The primary is in a live captain conversation, uses a flat-rate captain seat for this purpose, and is already restart-safe through the session-start digest.
+Leave clearing or session reset to the captain's own timing.
+
+### Load-bearing caveat
+
+This optimization is safe only when the durable-state habit holds.
+If a worker stops writing substantive status or ledger state before checkpointing, an early relaunch loses context as well as tokens.
 
 ## Ledger file convention
 
@@ -41,13 +71,13 @@ Template:
 
 ## On task start
 
-1. If this brief does not contain multiple independent tasks, stop — the ledger is not needed.
+1. If this is not a multi-task brief and the worker is not a usage-metered crewmate task at a proactive checkpoint, stop - the ledger is not needed.
 2. If `<worktree>/.fm-progress.md` exists, read it and note every task marked `[x]` as already completed.
    Skip those tasks entirely — do not re-execute, re-inspect, or re-verify them.
 3. If the ledger does not exist, first exclude it from git in this worktree
    (see Ledger file convention), then create it from the task list in the brief.
    Mark every task `[ ] not started`.
-4. Proceed with the first incomplete task.
+4. Proceed with the first incomplete task, or with the next unfinished checkpoint named in the continuation note.
 
 ## After each task completion
 
