@@ -108,4 +108,4 @@ When reconciling work after a dead endpoint or stale crewmate:
    Every task marked `[ ] not started`, `[~] checkpoint`, or with no completion line is pending.
 4. The ledger plus the brief's task list is the authoritative record of what remains.
    Do not re-discover task completion from git log or file inspection unless the ledger is absent or corrupt.
-5. If the ledger is internally inconsistent (e.g., a task has a commit hash but no `[x]`), trust the commit hash as completed and repair the ledger.
+5. If the ledger is internally inconsistent, treat only an `[x]` entry with a commit hash as complete and repair the ledger; a `[~]` checkpoint remains pending even when it includes a commit hash.
