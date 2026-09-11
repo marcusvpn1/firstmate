@@ -459,6 +459,8 @@ The skill owns the daemon procedure; these safety facts remain inline:
 
 For the full `stuck-crewmate-recovery` trigger, including a live worker claiming its no-mistakes pipeline is dead, unreachable, or timed out, follow section 13.
 
+Load `progress-ledger` at a usage-metered secondmate's natural idle checkpoint; its tiered policy owns proactive checkpoint and relaunch boundaries.
+
 ## 9. Escalation and captain etiquette
 
 **Talk in outcomes, not mechanics.**
@@ -569,7 +571,7 @@ These skills are not captain-invocable; load them only at their precise triggers
 - `fmx-respond` - load on an `x-mention <request_id>` `check:` wake to handle the mention, on an `x-mode-error ...` `check:` wake to report the Relay configuration blocker, on a `public-followup ...` `check:` wake or a startup-surfaced public commitment, and on any milestone or terminal wake for a Relay-linked task before posting its completion follow-up; relevant only when Relay is on.
 - `firstmate-codexapp` - load before coordinating a visible Codex Desktop thread, evaluating a Codex App backend request, or reconciling Codex Desktop host-tool smoke evidence for Firstmate work.
 - `firstmate-coding-guidelines` - load before changing firstmate's shared, tracked material, as defined by section 1's list, whether editing directly or briefing a crewmate for a firstmate-repo task.
-- `progress-ledger` - load on every multi-task ship brief (the brief instructs it) and when `stuck-crewmate-recovery` reconciles work after a dead-endpoint or stale-crewmate event; owns the durable `.fm-progress.md` ledger that survives context compaction.
+- `progress-ledger` - load on every ship or scout brief dispatched on a usage-metered model, every multi-task ship brief, at usage-metered secondmate idle checkpoints, and when `stuck-crewmate-recovery` reconciles a dead or stale crewmate; owns the durable `.fm-progress.md` ledger and tiered proactive-relaunch policy.
 
 ## 14. Relay
 
