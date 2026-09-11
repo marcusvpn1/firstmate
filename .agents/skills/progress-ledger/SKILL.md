@@ -24,7 +24,7 @@ No harness currently exposes a reliable context-percentage signal, so use contin
 
 For a ship or scout task, checkpoint at the existing natural boundary whenever possible, and after roughly 15-20 rounds of continued work without a clean stopping point.
 At the checkpoint, commit applicable work, append one substantive status line, and record the checkpoint in `.fm-progress.md`.
-Then request a relaunch with a continuation note via `bin/fm-control.sh <id> relaunch --note`, rather than continuing indefinitely in one session.
+Then request a relaunch with a continuation note via `bin/fm-control.sh <id> relaunch --note '<checkpoint and next unfinished work>'`, rather than continuing indefinitely in one session.
 The continuation note must identify the durable checkpoint and the next unfinished work.
 
 ### Persistent secondmates
@@ -69,6 +69,12 @@ Template:
 - [ ] not started
 ```
 
+At a proactive checkpoint, replace the task's pending line with a checkpoint line and leave it unfinished until the task is complete:
+
+```markdown
+- [~] 2025-07-17 14:30 UTC — checkpoint commit `abc1234`; next: <unfinished work>
+```
+
 ## On task start
 
 1. If this is not a multi-task brief and the worker is not a usage-metered crewmate task at a proactive checkpoint, stop - the ledger is not needed.
@@ -99,7 +105,7 @@ When reconciling work after a dead endpoint or stale crewmate:
    Proceed with normal recovery — inspect `git log` and file state to determine completed work.
 3. If it exists, read it.
    Every task marked `[x]` with a commit hash is complete — skip it.
-   Every task marked `[ ] not started` or with no completion line is pending.
+   Every task marked `[ ] not started`, `[~] checkpoint`, or with no completion line is pending.
 4. The ledger plus the brief's task list is the authoritative record of what remains.
    Do not re-discover task completion from git log or file inspection unless the ledger is absent or corrupt.
 5. If the ledger is internally inconsistent (e.g., a task has a commit hash but no `[x]`), trust the commit hash as completed and repair the ledger.
