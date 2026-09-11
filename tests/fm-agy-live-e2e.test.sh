@@ -53,9 +53,18 @@ MODEL_FLAG=
 
 # The exact one-shot print shape fm-spawn.sh places: flags first, then the
 # prompt attached to -p with `=`, stdout redirected to the result artifact.
-# shellcheck disable=SC2086 # MODEL_FLAG is a deliberate single flag string
-if ! "$AGY_BIN" --output-format json $MODEL_FLAG --print-timeout 120s --log-file "$LOG" \
-    -p='Reply with exactly the word: hello' > "$RESULT" 2>"$LAB/stderr.txt"; then
+# The PG4 ambient-secret scrub runs in the same subshell that execs agy, so the
+# only sanctioned launch path gets the scrubbed environment too.
+run_agy_scrubbed() {
+  (
+    eval "$(fm_agy_env_scrub_code)"
+    # shellcheck disable=SC2086 # MODEL_FLAG is a deliberate single flag string
+    exec "$AGY_BIN" --output-format json $MODEL_FLAG --print-timeout 120s \
+      --log-file "$LOG" -p='Reply with exactly the word: hello'
+  )
+}
+
+if ! run_agy_scrubbed > "$RESULT" 2>"$LAB/stderr.txt"; then
   fail "real agy print run exited nonzero: $(head -c 400 "$LAB/stderr.txt" 2>/dev/null)"
 fi
 

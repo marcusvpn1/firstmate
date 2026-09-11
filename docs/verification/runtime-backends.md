@@ -1542,7 +1542,7 @@ The run spawns a local `codebase-memory-mcp` child and an `npm exec mcp-remote h
 
 ### Live guard
 
-`FM_AGY_LIVE=1 tests/fm-agy-live-e2e.test.sh` is the opt-in guard that submits a real prompt and re-verifies the pinned version and the result schema; it fails loudly naming the installed version when that version does not match the pin.
+`FM_AGY_LIVE=1 tests/fm-agy-live-e2e.test.sh` is the opt-in guard that submits a real prompt under the same ambient-secret scrub (`fm_agy_env_scrub_code`) and re-verifies the pinned version and the result schema; it fails loudly naming the installed version when that version does not match the pin.
 
 ### End-to-end Hello World (2026-09-11, historical)
 
@@ -1562,5 +1562,5 @@ The captain's 2026-09-11 decision closes the permission-boundary gap by scrubbin
 1. **Scrubbed launch environment.** `fm_agy_env_scrub_code` unsets `STITCH_X_GOOG_API_KEY`, `STITCH_API_KEY`, `ANTHROPIC_API_KEY`, `APIFY_API_KEY`, `HF_TOKEN`, and every other `*_API_KEY` / `*_TOKEN` / `*_SECRET` var in the pane shell before agy runs, so agy's MCP children never inherit ambient credentials. The operator's own shell (which feeds the Stitch MCP server) is untouched.
 2. **Unverified MCP sandbox.** agy's MCP children are treated as network-unrestricted: their `--sandbox` behavior is unverified, so no permission proof exists for their network or home access.
 
-The env scrub is verified by a portable behavior test (`tests/fm-agy-harness.test.sh`) that proves the emitted fragment removes every secret-patterned var while preserving unrelated vars, and by the live guard on agy 1.2.1.
+The env scrub is verified by a portable behavior test (`tests/fm-agy-harness.test.sh`) that proves the emitted fragment removes every secret-patterned var while preserving unrelated vars, and is applied by the live guard before it execs agy on agy 1.2.1.
 agy also reads `~/.gemini/antigravity-cli` state and, without `--add-dir`, writes files into `~/.gemini/antigravity-cli/scratch/` instead of the task worktree; `--add-dir` remains load-bearing for worktree writes.

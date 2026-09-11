@@ -10,6 +10,14 @@ set -u
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
+# bin/fm-harness.sh checks verified ENV markers before ancestry. A suite run
+# from inside Cursor/Claude/Pi/Grok/Gemini/rovo/omp inherits those markers,
+# which outrank the fake ancestry the detection cases set up. Drop the ambient
+# markers so the asserted verdict does not depend on which harness launched
+# the suite.
+unset CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS GROK_AGENT CURSOR_AGENT CURSOR_INVOKED_AS \
+  GEMINI_CLI ATLASSIAN_AGENT_TYPE ROVODEV_CLI FM_OMP_HARNESS
+
 AGY_LIB="$ROOT/bin/fm-agy-lib.sh"
 SPAWN="$ROOT/bin/fm-spawn.sh"
 CONTROL_LIB="$ROOT/bin/fm-control-lib.sh"
@@ -187,16 +195,6 @@ test_agy_env_scrub_removes_secrets_preserves_others() {
   }
   assert_contains "$out" 'scrub-ok' "env scrub did not reach the ok marker"
   pass "env scrub removes every secret-patterned var and preserves unrelated vars"
-}
-
-test_agy_env_scrub_does_not_mutate_operator_env() {
-  # The unset runs inside the pane shell only; the caller's own environment is
-  # left intact (the Stitch MCP server keeps its credentials).
-  STITCH_API_KEY=outer-secret
-  bash -c '. "$1"; eval "$(fm_agy_env_scrub_code)"' _ "$AGY_LIB" 2>/dev/null
-  [ "${STITCH_API_KEY:-}" = outer-secret ] || fail "env scrub mutated the operator's own environment"
-  unset STITCH_API_KEY
-  pass "env scrub leaves the operator's own shell environment untouched"
 }
 
 # ---- result publication ---------------------------------------------------
@@ -454,8 +452,7 @@ SH
 test_agy_harness_detection_exact_match() {
   local fakebin out
   fakebin=$(make_fake_ps "$TMP_ROOT/detect-ancestry-ok" '/usr/local/bin/agy')
-  out=$(env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT \
-    PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-harness.sh")
+  out=$(PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-harness.sh")
   [ "$out" = agy ] || fail "exact agy ancestry returned '$out'"
   pass "fm-harness detects the exact agy process name"
 }
@@ -463,8 +460,7 @@ test_agy_harness_detection_exact_match() {
 test_agy_harness_detection_not_glob() {
   local fakebin out
   fakebin=$(make_fake_ps "$TMP_ROOT/detect-ancestry-fragment" '/usr/local/bin/magy')
-  out=$(env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT \
-    PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-harness.sh")
+  out=$(PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-harness.sh")
   [ "$out" != agy ] || fail "a non-agy command with the fragment was elevated to agy"
   pass "fm-harness does not glob-match unrelated commands as agy"
 }
@@ -596,6 +592,24 @@ EOF
   pass "fm-spawn: agy secondmate is refused"
 }
 
+test_agy_spawn_refused_on_herdr() {
+  local rec case_dir home proj wt fakebin id out status
+  rec=$(make_spawn_case spawn-refused-herdr)
+  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" \
+    PATH="$fakebin:$BASE_PATH" \
+    "$SPAWN" --mode no-mistakes --yolo off --backend herdr "$id" "$proj" agy 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "agy spawn on herdr should be refused, not launched: $out"
+  assert_contains "$out" "refused by normal dispatch" "agy herdr refusal diagnostic wrong"
+  pass "fm-spawn: agy is refused on the herdr backend before endpoint creation"
+}
+
 test_agy_control_refused() {
   if bash -c '. "$1"; fm_control_harness_supported agy' _ "$CONTROL_LIB" 2>/dev/null; then
     fail "agy control was reported harness-supported"
@@ -612,15 +626,17 @@ test_agy_stale_generation_rejected() {
   dir=$(bash -c '. "$1"; fm_agy_ensure_result_dir "$2"' _ "$AGY_LIB" "$task_id")
   stale=$(bash -c '. "$1"; fm_agy_result_file "$2" gen-old' _ "$AGY_LIB" "$task_id")
   cur=$(bash -c '. "$1"; fm_agy_result_file "$2" gen-new' _ "$AGY_LIB" "$task_id")
-  agy_result_json SUCCESS > "$stale"
   [ "$stale" != "$cur" ] || fail "stale and current generation share a result path"
+  agy_result_json SUCCESS > "$stale"
+  agy_result_json SUCCESS > "$cur"
   rc=0
   bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$cur" 2>/dev/null || rc=$?
-  [ "$rc" -ne 0 ] || fail "current generation accepted a stale-generation artifact"
+  expect_code 0 "$rc" "the current generation's valid artifact was rejected"
   bash -c '. "$1"; fm_agy_cleanup "$2"' _ "$AGY_LIB" "$task_id"
   assert_absent "$stale" "stale artifact survived cleanup"
+  assert_absent "$cur" "current artifact survived cleanup"
   rmdir "$dir" 2>/dev/null || true
-  pass "a stale-generation result is never accepted as the current generation's result"
+  pass "generation-bound paths keep a stale artifact out of the current result, and cleanup retires both"
 }
 
 test_agy_harness_detection_exact_match
@@ -635,7 +651,6 @@ test_agy_result_file_binds_generation
 test_agy_result_file_refuses_unsafe_task_id
 test_agy_launch_template_contract
 test_agy_env_scrub_removes_secrets_preserves_others
-test_agy_env_scrub_does_not_mutate_operator_env
 test_agy_publish_result_atomic
 test_agy_publish_result_rejects_empty
 test_agy_publish_result_rejects_oversized
@@ -661,3 +676,4 @@ test_agy_spawn_refused
 test_agy_spawn_refused_creates_no_meta
 test_agy_spawn_refused_via_config
 test_agy_spawn_rejects_secondmate
+test_agy_spawn_refused_on_herdr

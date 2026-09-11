@@ -8,7 +8,8 @@
 # secondmate, and the raw launch escape hatch), so no production path reaches
 # this library. The only sanctioned way to exercise agy is the opt-in live
 # guard (tests/fm-agy-live-e2e.test.sh, FM_AGY_LIVE=1), which invokes the binary
-# directly and validates its result through the functions below. There is
+# directly under the PG4 ambient-secret scrub and validates its result through
+# the functions below. There is
 # deliberately no production watcher/collection consumer: the publication,
 # validation, liveness, and cleanup helpers are exercised only by that guard
 # and the portable test suite.
@@ -35,7 +36,8 @@
 #   (STITCH_X_GOOG_API_KEY, STITCH_API_KEY, ANTHROPIC_API_KEY, APIFY_API_KEY,
 #   HF_TOKEN) and every other *_API_KEY / *_TOKEN / *_SECRET var in the pane
 #   shell before agy runs, so agy's MCP children never inherit ambient
-#   credentials. The operator's own shell (and the Stitch MCP server it feeds)
+#   credentials (the live guard applies the same scrub in its launch subshell).
+#   The operator's own shell (and the Stitch MCP server it feeds)
 #   is untouched: the unset happens only in the pane shell.
 #
 # Result schema (the real `--output-format json` object, observed 1.2.1):

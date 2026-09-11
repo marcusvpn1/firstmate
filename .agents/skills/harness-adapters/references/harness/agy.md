@@ -1,7 +1,7 @@
 # Agy CLI
 
 EXPERIMENTAL and unverified.
-Not added to the verified adapter list, and refused by normal dispatch in every form (explicit `fm-spawn ... agy`, `config/crew-harness`, secondmate, and the raw launch escape hatch), so no dispatch path reaches a launch. The only sanctioned execution is the opt-in live guard (`tests/fm-agy-live-e2e.test.sh`, `FM_AGY_LIVE=1`), which invokes the binary directly and validates its result.
+Not added to the verified adapter list, and refused by normal dispatch in every form (explicit `fm-spawn ... agy`, `config/crew-harness`, secondmate, and the raw launch escape hatch), so no dispatch path reaches a launch. The only sanctioned execution is the opt-in live guard (`tests/fm-agy-live-e2e.test.sh`, `FM_AGY_LIVE=1`), which invokes the binary directly under the PG4 ambient-secret scrub and validates its result.
 
 Observed on Agy 1.2.1 (2026-09-11) via the live guard (and, historically, a one-shot crewmate/scout spawn during the proof gate).
 The installed binary auto-updates, so the exact version pin is load-bearing: the live guard refuses any version other than the pinned one (`fm_agy_version_pinned`) rather than trusting a CLI surface that may have drifted.
@@ -21,7 +21,7 @@ The installed binary auto-updates, so the exact version pin is load-bearing: the
 | Models | `agy models` lists the current catalog (observed: `gemini-3.8/3.7/3.6-flash-{high,medium,low}`, `gemini-3.1-pro-{high,low}`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`). The model flag passes through; agy rejects an unknown model with a nonzero exit and an `ERROR` result. |
 | Effort | `--effort low\|medium\|high` only. `xhigh` and `max` are unsupported and omitted, never guessed. |
 | Result | One JSON object on stdout, `--output-format json`, with schema `{conversation_id, status, response, error?, denied_actions?, duration_seconds, num_turns, usage}` and `status` being `SUCCESS` or `ERROR` (uppercase). `denied_actions` is present when a tool action is auto-denied, and a `SUCCESS` result with a non-empty `denied_actions` is a failed task, not a success. Completion is proven only by a validated, generation-bound result artifact, never by exit code alone. |
-| Environment scrub | The launch template unsets `STITCH_X_GOOG_API_KEY`, `STITCH_API_KEY`, `ANTHROPIC_API_KEY`, `APIFY_API_KEY`, `HF_TOKEN`, and every other `*_API_KEY` / `*_TOKEN` / `*_SECRET` var in the pane shell before agy runs, so agy's MCP children never inherit ambient credentials; the operator's own shell is untouched (`fm_agy_env_scrub_code`). |
+| Environment scrub | `fm_agy_env_scrub_code` unsets `STITCH_X_GOOG_API_KEY`, `STITCH_API_KEY`, `ANTHROPIC_API_KEY`, `APIFY_API_KEY`, `HF_TOKEN`, and every other `*_API_KEY` / `*_TOKEN` / `*_SECRET` var in the pane shell (and in the live guard's launch subshell) before agy runs, so agy's MCP children never inherit ambient credentials; the operator's own shell is untouched. |
 | Result publication | stdout is redirected to a per-generation temp file and atomically renamed on completion, so a reader never sees a partial artifact (`fm_agy_publish_result`). |
 | Exit | Exit code `0` on success and `1` on error, but the result artifact is the source of truth for completion. |
 | Control | Refused. Interrupt/exit/relaunch postconditions are unverified against the live binary, so `../../../bin/fm-control-lib.sh` omits agy and the control plane refuses its verbs. |
@@ -54,5 +54,5 @@ The permission boundary is now handled by two explicit, documented limitations r
 1. **Scrubbed launch environment.** `fm_agy_env_scrub_code` unsets the named ambient secrets (`STITCH_X_GOOG_API_KEY`, `STITCH_API_KEY`, `ANTHROPIC_API_KEY`, `APIFY_API_KEY`, `HF_TOKEN`) plus every other `*_API_KEY` / `*_TOKEN` / `*_SECRET` var in the pane shell before agy runs, so no ambient credential reaches agy's MCP children. The operator's own shell (and the Stitch MCP server it feeds) is untouched.
 2. **Unverified MCP sandbox.** Agy's MCP children are treated as network-unrestricted: their `--sandbox` behavior is unverified, so no permission proof exists for their network or home access.
 
-The real-binary result schema and version pin are verified by the opt-in live guard on agy 1.2.1 (`../../../../docs/verification/runtime-backends.md`); the earlier end-to-end Hello World spawn is recorded there as historical proof-gate evidence, but normal dispatch is now refused, so the live guard is the only sanctioned execution.
+The real-binary result schema, version pin, and the PG4 ambient-secret scrub are exercised by the opt-in live guard on agy 1.2.1 (`../../../docs/verification/runtime-backends.md`); the earlier end-to-end Hello World spawn is recorded there as historical proof-gate evidence, but normal dispatch is now refused, so the live guard is the only sanctioned execution.
 Agy stays out of the verified adapter list and fails closed wherever it is named.
