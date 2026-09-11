@@ -60,7 +60,10 @@ fm_control_verb_allowed() {  # <verb>
 
 # The harnesses whose control mechanics are verified. Mirrors AGENTS.md
 # section 4's verified-adapter list; an unverified adapter is refused rather
-# than guessed at, exactly as a spawn on it would be.
+# than guessed at, exactly as a spawn on it would be. agy is deliberately
+# ABSENT: its interrupt/exit/relaunch postconditions have not been verified
+# against the live binary, so control-plane verbs are refused for it rather
+# than performed blind (see bin/fm-agy-lib.sh).
 fm_control_harness_supported() {  # <harness>
   case "${1-}" in
     claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp) return 0 ;;

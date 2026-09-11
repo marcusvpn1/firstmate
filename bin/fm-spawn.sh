@@ -428,6 +428,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-gate-refuse-lib.sh"
 # shellcheck source=bin/fm-busy-lib.sh
 . "$SCRIPT_DIR/fm-busy-lib.sh"
+# shellcheck source=bin/fm-agy-lib.sh
+. "$SCRIPT_DIR/fm-agy-lib.sh"
 # shellcheck source=bin/fm-cursor-lib.sh
 . "$SCRIPT_DIR/fm-cursor-lib.sh"
 # shellcheck source=bin/fm-pr-lib.sh
@@ -1332,7 +1334,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   }
 elif [ "$KIND" = secondmate ]; then
   case "${POS[1]:-}" in
-    ''|claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|cursor|gemini|muse|rovo|omp|agy)
+    ''|claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|cursor|gemini|muse|rovo|omp)
       ARG3=${POS[1]:-}
       ;;
     *' '*)
@@ -1551,18 +1553,20 @@ launch_template() {
     # Its turn-end signal is a globally configured Stop hook plus a guarded
     # per-task worktree token, so no launch placeholder belongs here.
     kimi) printf '%s' '__KIMIBIN__ __MODELFLAG__--auto' ;;
-    # AGY is a headless harness that runs `agy -p` (--print) to process the
-    # brief non-interactively and exits when done.
-    # It runs inside a PTY (tmux pane) so it sees a TTY; piped stdout is NOT
-    # the protocol. The watcher captures the pane after exit and validates the
-    # per-run result.json artifact. Exit code 0 is not trusted - only a valid
-    # result.json with status=success counts as completion.
-    # AGY does not support interactive steer or turn-end hooks, so there is no
-    # harness-specific hook installed below and no secondmate support.
-    # Model and effort flags are passed inline; unsupported effort values are
-    # omitted rather than guessed.
-    # The --log-file flag writes AGY's internal log to the task temp directory.
-    agy) printf '%s' 'agy -p --output-format json --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+    # AGY is an EXPERIMENTAL, unverified one-shot headless harness: a single
+    # `agy --output-format json ... -p="<brief>"` invocation processes the brief
+    # and exits. There is no TUI, no interactive steer, and no turn-end hook, so
+    # no harness-specific hook is installed below and no secondmate is supported
+    # (refused before endpoint creation, like muse/gemini/rovo).
+    #
+    # The launch template lives in bin/fm-agy-lib.sh (fm_agy_launch_template),
+    # the single owner of the command shape, the exact-version pin, and the
+    # atomic, generation-bound result publication contract. The prompt is
+    # attached to -p with `=` so the flag does not swallow the next flag as its
+    # prompt, and stdout is redirected through a per-generation temp file that
+    # is atomically renamed on completion. Completion is proven only by a
+    # validated result artifact, never by exit code alone.
+    agy) fm_agy_launch_template ;;
     # muse (Muse Code): a positional prompt starts the supervised interactive
     # session. --yolo is the single flag that makes a crewmate pane viable: muse
     # ships approval prompts AND a filesystem/network sandbox ON by default
@@ -1687,6 +1691,29 @@ fi
 if [ "$KIND" = secondmate ] && [ "$HARNESS" = rovo ]; then
   echo "error: rovo is a verified crewmate/scout adapter only and cannot run a secondmate; it has no primary supervision protocol. Select a harness verified for secondmates." >&2
   exit 1
+fi
+
+# agy is an EXPERIMENTAL, unverified one-shot crewmate/scout adapter. It has no
+# primary supervision protocol, no turn-end hook, and no verified control
+# mechanics, so a secondmate (a firstmate instance that must supervise itself)
+# is refused rather than stood up with no way to arm its watch cycle. Its
+# liveness/collect/interrupt contract is verified only on the tmux backend, so
+# every other backend is refused before an endpoint is created rather than
+# leaving a task the backend cannot observe or stop. The exact version pin is
+# enforced here too, so an auto-updated agy with a different CLI surface is
+# refused loudly instead of launched on stale assumptions.
+if [ "$HARNESS" = agy ]; then
+  if [ "$KIND" = secondmate ]; then
+    echo "error: agy is an unverified one-shot crewmate/scout adapter only and cannot run a secondmate; it has no primary supervision protocol. Select a harness verified for secondmates." >&2
+    exit 1
+  fi
+  if [ "$BACKEND" != tmux ]; then
+    echo "error: agy is verified only on the tmux backend; backend=$BACKEND is refused before an endpoint is created." >&2
+    exit 1
+  fi
+  if ! fm_agy_version_pinned; then
+    exit 1
+  fi
 fi
 
 case "$HARNESS" in
@@ -3785,12 +3812,14 @@ sq_status=$(shell_quote "$STATE/$ID.status")
 sq_runrecord=$(shell_quote "$DATA/$ID/run-record.json")
 sq_tasktmp=$(shell_quote "$TASK_TMP")
 sq_id=$(shell_quote "$ID")
-sq_agylog=$(shell_quote "$TASK_TMP/agy.log")
+sq_agylog=$(shell_quote "$(fm_agy_log_file "$ID" "$SPAWN_GEN")")
+sq_agyresult=$(shell_quote "$(fm_agy_result_file "$ID" "$SPAWN_GEN")")
 MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT")
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
 LAUNCH=${LAUNCH//__EFFORTFLAG__/$EFFORTFLAG}
 LAUNCH=${LAUNCH//__AGYLOGFILE__/$sq_agylog}
+LAUNCH=${LAUNCH//__AGYRESULT__/$sq_agyresult}
 if [ "$HARNESS" = rovo ]; then
   ROVOCONFIGOVERRIDE=$(rovo_config_override_flag "$EFFORT" "$DATA" "$STATE" "$ID") || {
     echo "error: could not resolve this task's home paths for rovo's allowedExternalPaths grant" >&2

@@ -89,6 +89,7 @@ compact
 Pi disagrees with Claude and Codex on `resume`: a new Pi process continuing a session reports `startup`, and Pi's `resume` reason is reserved for an in-process session switch.
 The current adapter classification and baseline mechanics are owned by [`../sessionstart-nudge.md`](../sessionstart-nudge.md#harness-transports) and the `bin/fm-session-start.sh` header.
 Their continuation classification is covered by portable tests, not claimed as live validation in this record.
+agy is a crewmate/scout-only, unverified adapter with no primary supervision transport or turn-end hook, so it is absent from this primary table and refused for secondmate and primary work ([`references/harness/agy.md`](../../.agents/skills/harness-adapters/references/harness/agy.md)).
 
 ### Pi `/new` provider prerequisite
 

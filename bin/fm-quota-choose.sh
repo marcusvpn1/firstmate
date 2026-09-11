@@ -316,6 +316,14 @@ printf '%s\n' "$QUOTA_JSON" | fm_quota_json_valid || die "invalid quota-axi prov
 # multi-provider routing is owned by AGENTS.md section 4 and the
 # quota-array-dispatch skill, not this helper.
 provider_for_harness() {
+  # agy is deliberately NOT mapped here. It is a multi-provider gateway whose
+  # catalog spans Gemini, Claude, and GPT-OSS, so it has no single primary
+  # provider family to key quota against. quota-axi (v0.1.41) reports an `agy`
+  # provider, but its effective availability is empty (three unresolved windows:
+  # gemini_5h, gemini_weekly, claude_gpt_weekly), so the quota is unmeasurable
+  # rather than guessable. Unknown/unmeasurable quota stays disclosed
+  # uncertainty; a candidate that names agy is rejected rather than assigned a
+  # guessed family. See docs/verification/runtime-backends.md.
   case "$1" in
     omp)
       case "${2:-}" in

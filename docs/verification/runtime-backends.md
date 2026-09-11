@@ -1502,3 +1502,45 @@ A throwaway scout was spawned through `bin/fm-spawn.sh --scout --harness omp --m
 6. `bin/fm-control.sh <id> exit` stopped the agent and `bin/fm-teardown.sh` returned the worktree and closed the item.
 
 `FM_OMP_LIVE_E2E=1 tests/fm-omp-primary-live-e2e.test.sh` refreshes the primary evidence; the worker path above is refreshed by repeating the scout dispatch after any omp upgrade.
+
+## Agy
+
+EXPERIMENTAL and unverified; not in the verified adapter list and refused by `bin/fm-spawn.sh` (secondmate and non-tmux backends), `bin/fm-bootstrap.sh` (verified allowlist), and `bin/fm-quota-choose.sh` (no provider family) until the proof gate below passes.
+The observations here were produced on 2026-09-11 against agy 1.2.1 (`~/.local/bin/agy`, a Go binary) on macOS arm64.
+
+### Result schema
+
+The real `agy --output-format json` result object on success is:
+
+```json
+{"conversation_id":"<conversation-id>","status":"SUCCESS","response":"hello","duration_seconds":1.14,"num_turns":1,"usage":{"input_tokens":12456,"output_tokens":1,"thinking_tokens":0,"cache_read_tokens":8146,"total_tokens":12457}}
+```
+
+and on error the same object carries `status` `ERROR`, a present `error` string, an empty `conversation_id`, `num_turns` `0`, and exit code `1`.
+`bin/fm-agy-lib.sh` validates this schema strictly: malformed JSON, unknown top-level or usage keys, wrong types, and unknown statuses all fail closed.
+
+### Launch shape and the dashline bug
+
+A bare `agy -p <prompt>` is broken: `-p` swallows the next flag as its prompt and ignores the real prompt.
+The prompt must be attached with `=` (`-p="<prompt>"`), which `fm_agy_launch_template` now places with the flags first.
+
+### Process identity and children
+
+`ps -o comm=` reports the exact name `agy` for the agent process, so detection is anchored and never globbed.
+The run spawns a local `codebase-memory-mcp` child and an `npm exec mcp-remote https://stitch.googleapis.com/mcp` child whose arguments expose a Google API key, so the permission and credential-leakage boundary is not yet proven.
+
+### Model catalog
+
+`agy models` lists 14 models: `gemini-3.8/3.7/3.6-flash-{high,medium,low}`, `gemini-3.1-pro-{high,low}`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, and `gpt-oss-120b-medium`.
+
+### Quota
+
+`quota-axi` 0.1.41 reports an `agy` provider (plan `Google AI Pro`) with fresh windows but empty effective availability (unresolved `gemini_5h`, `gemini_weekly`, `claude_gpt_weekly`), so quota is unmeasurable and `bin/fm-quota-choose.sh` rejects agy rather than guessing a provider family.
+
+### Live guard
+
+`FM_AGY_LIVE=1 tests/fm-agy-live-e2e.test.sh` is the opt-in guard that submits a real prompt and re-verifies the pinned version and the result schema; it fails loudly naming the installed version when that version does not match the pin.
+
+### Not yet verified
+
+The permission boundary, live liveness through the backend, live interrupt/cancel/exit postconditions, and the full Hello World acceptance exercise are unproven; agy stays out of the verified adapter list until they are.
