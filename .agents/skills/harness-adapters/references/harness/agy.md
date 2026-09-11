@@ -1,10 +1,10 @@
 # Agy CLI
 
 EXPERIMENTAL and unverified.
-Not added to the verified adapter list, not selectable by normal dispatch, and refused for secondmate and primary work until the full proof gate in `../../../../docs/verification/runtime-backends.md` passes.
+Not added to the verified adapter list, and refused by normal dispatch in every form (explicit `fm-spawn ... agy`, `config/crew-harness`, secondmate, and the raw launch escape hatch), so no dispatch path reaches a launch. The only sanctioned execution is the opt-in live guard (`tests/fm-agy-live-e2e.test.sh`, `FM_AGY_LIVE=1`), which invokes the binary directly and validates its result.
 
-Observed on Agy 1.2.1 (2026-09-11) for crewmate and scout work only.
-The installed binary auto-updates, so the exact version pin is load-bearing: `bin/fm-spawn.sh` refuses launch on any version other than the pinned one rather than trusting a CLI surface that may have drifted.
+Observed on Agy 1.2.1 (2026-09-11) via the live guard (and, historically, a one-shot crewmate/scout spawn during the proof gate).
+The installed binary auto-updates, so the exact version pin is load-bearing: the live guard refuses any version other than the pinned one (`fm_agy_version_pinned`) rather than trusting a CLI surface that may have drifted.
 
 ## Operating facts
 
@@ -12,8 +12,8 @@ The installed binary auto-updates, so the exact version pin is load-bearing: `bi
 |---|---|
 | Binary | `agy`, resolved from `PATH` (`~/.local/bin/agy`); the live process name is the exact word `agy` (a Go binary). |
 | Version | Exact pin `FM_AGY_PINNED_VERSION` (default `1.2.1`); `fm_agy_version_pinned` refuses a mismatch. |
-| Kind | Crewmate and scout only. No secondmate, no primary (no turn-end hook, no primary supervision protocol). |
-| Backend | tmux only. Every other backend is refused before an endpoint is created. |
+| Kind | None by normal dispatch (refused for every kind). The live guard exercises a one-shot print run only. |
+| Backend | Normal dispatch refuses every backend (tmux included) before an endpoint is created. The live guard runs agy as a direct subprocess, not through a runtime backend. |
 | Launch | `agy --output-format json --dangerously-skip-permissions --add-dir <worktree> <--model> <--effort> --print-timeout Ns --log-file <log> -p="<encoded brief>"`, owned by `fm_agy_launch_template` in `../../../bin/fm-agy-lib.sh`. |
 | Worktree write | `--add-dir <worktree>` is load-bearing: without it agy's file tool writes into `~/.gemini/antigravity-cli/scratch/` instead of the task worktree. |
 | One-shot | A single `-p` (print) invocation processes the brief and exits. No TUI, no interactive steer, no data-plane steering, no turn-end hook. |
@@ -36,8 +36,8 @@ Detection alone never authorizes a launch: `bin/fm-spawn.sh` and `bin/fm-bootstr
 
 ## Launch and result
 
-`bin/fm-spawn.sh` refuses an agy launch before endpoint creation when any of these holds: the kind is secondmate, the backend is not tmux, or the installed version does not equal the pinned version.
-The launch template is owned by `../../../bin/fm-agy-lib.sh` so the command shape, the `-p=` fix, and the result contract have one owner.
+`bin/fm-spawn.sh` refuses every agy launch before endpoint creation (explicit selection, `config/crew-harness`, secondmate, and the raw launch escape hatch all fail closed), so no dispatch reaches a launch template.
+The launch template is owned by `../../../bin/fm-agy-lib.sh` as the documented reference shape (exercised by the portable template-contract test and the live guard's shape, not by dispatch), so the command shape, the `-p=` fix, and the result contract have one owner.
 
 The result path is task-owned and generation-bound: `/tmp/fm-<task-id>/result-<spawn_gen>.json`.
 A stale artifact from a previous generation lives at a different path and is never read as this generation's result.
@@ -54,5 +54,5 @@ The permission boundary is now handled by two explicit, documented limitations r
 1. **Scrubbed launch environment.** `fm_agy_env_scrub_code` unsets the named ambient secrets (`STITCH_X_GOOG_API_KEY`, `STITCH_API_KEY`, `ANTHROPIC_API_KEY`, `APIFY_API_KEY`, `HF_TOKEN`) plus every other `*_API_KEY` / `*_TOKEN` / `*_SECRET` var in the pane shell before agy runs, so no ambient credential reaches agy's MCP children. The operator's own shell (and the Stitch MCP server it feeds) is untouched.
 2. **Unverified MCP sandbox.** Agy's MCP children are treated as network-unrestricted: their `--sandbox` behavior is unverified, so no permission proof exists for their network or home access.
 
-Live liveness through the tmux backend, the generation-bound result publication, and a full end-to-end Hello World spawn are verified on agy 1.2.1 (`../../../../docs/verification/runtime-backends.md`).
-Until promotion is granted, agy stays out of the verified adapter list and fails closed wherever it is named.
+The real-binary result schema and version pin are verified by the opt-in live guard on agy 1.2.1 (`../../../../docs/verification/runtime-backends.md`); the earlier end-to-end Hello World spawn is recorded there as historical proof-gate evidence, but normal dispatch is now refused, so the live guard is the only sanctioned execution.
+Agy stays out of the verified adapter list and fails closed wherever it is named.

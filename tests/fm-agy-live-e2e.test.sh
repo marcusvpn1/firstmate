@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Live guard for the real, installed Agy CLI (bin/fm-test-run.sh's
 # live-harness-optin family). Opt-in: it submits a real prompt and spends model
-# tokens. It proves the exact one-shot print shape fm-spawn.sh places - a
-# `--output-format json` run with the prompt attached to -p with `=` - and that
-# the real binary publishes a valid SUCCESS result under the observed schema.
+# tokens. Agy is refused by normal dispatch (bin/fm-spawn.sh), so this guard is
+# the ONLY sanctioned way to execute the real binary: it invokes agy directly
+# with the documented `--output-format json` + `-p=` one-shot print shape (the
+# same shape bin/fm-agy-lib.sh's launch template documents) and proves the real
+# binary publishes a valid SUCCESS result under the observed schema.
 #
 # The version pin is a hard gate: when agy IS installed but its version differs
 # from the pinned one, this guard fails loudly naming both versions rather than

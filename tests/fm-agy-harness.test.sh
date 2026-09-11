@@ -12,6 +12,7 @@ set -u
 
 AGY_LIB="$ROOT/bin/fm-agy-lib.sh"
 SPAWN="$ROOT/bin/fm-spawn.sh"
+CONTROL_LIB="$ROOT/bin/fm-control-lib.sh"
 TMP_ROOT=$(fm_test_tmproot fm-agy-harness)
 PYTHON_BIN=$(command -v python3) || fail "test needs python3"
 PYTHON_BIN_DIR=$(dirname "$PYTHON_BIN")
@@ -161,6 +162,9 @@ test_agy_launch_template_contract() {
   if printf '%s' "$out" | grep -q -- '-p '; then
     fail "template still uses the bare -p flag (the dashline bug)"
   fi
+  if printf '%s' "$out" | grep -q 'exit'; then
+    fail "template still ends the pane shell with 'exit' (destroys the endpoint)"
+  fi
   pass "launch template fixes the -p flag, redirects to a generation-bound temp file, and scrubs ambient secrets"
 }
 
@@ -193,17 +197,6 @@ test_agy_env_scrub_does_not_mutate_operator_env() {
   [ "${STITCH_API_KEY:-}" = outer-secret ] || fail "env scrub mutated the operator's own environment"
   unset STITCH_API_KEY
   pass "env scrub leaves the operator's own shell environment untouched"
-}
-
-test_agy_effort_flag_omits_unsupported() {
-  local out
-  out=$(bash -c '. "$1"; fm_agy_effort_flag xhigh' _ "$AGY_LIB")
-  if [ -n "$out" ]; then
-    fail "effort flag emitted unsupported xhigh"
-  fi
-  out=$(bash -c '. "$1"; fm_agy_effort_flag high' _ "$AGY_LIB")
-  assert_contains "$out" '--effort high' "effort flag did not emit high"
-  pass "effort flag supports only low|medium|high"
 }
 
 # ---- result publication ---------------------------------------------------
@@ -541,31 +534,48 @@ run_agy_spawn() {
     "$SPAWN" --mode no-mistakes --yolo off "$id" "$proj" agy 2>&1
 }
 
-test_agy_spawn_succeeds() {
+test_agy_spawn_refused() {
   local rec case_dir home proj wt fakebin id out status
-  rec=$(make_spawn_case spawn-ok)
+  rec=$(make_spawn_case spawn-refused)
   IFS='|' read -r case_dir home proj wt fakebin id <<EOF
 $rec
 EOF
   out=$(run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id")
   status=$?
-  expect_code 0 "$status" "agy spawn should succeed: $out"
-  assert_contains "$out" "spawned $id harness=agy" "agy spawn did not report success"
-  pass "fm-spawn: agy spawn succeeds on tmux with a matching version"
+  [ "$status" -ne 0 ] || fail "agy spawn should be refused, not launched: $out"
+  assert_contains "$out" "refused by normal dispatch" "agy spawn refusal diagnostic wrong"
+  pass "fm-spawn: agy is refused by normal dispatch even on tmux with a matching version"
 }
 
-test_agy_spawn_records_meta() {
+test_agy_spawn_refused_creates_no_meta() {
   local rec case_dir home proj wt fakebin id out meta
-  rec=$(make_spawn_case spawn-meta)
+  rec=$(make_spawn_case spawn-refused-meta)
   IFS='|' read -r case_dir home proj wt fakebin id <<EOF
 $rec
 EOF
   out=$(run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id")
   meta="$home/state/$id.meta"
-  assert_present "$meta" "meta file was not created for agy spawn"
-  assert_grep 'harness=agy' "$meta" "meta did not record harness=agy"
-  assert_grep 'spawn_gen=' "$meta" "meta did not record spawn_gen"
-  pass "fm-spawn: agy spawn records harness=agy and spawn_gen in meta"
+  assert_absent "$meta" "a refused agy spawn still created a meta file"
+  pass "fm-spawn: a refused agy spawn creates no meta file"
+}
+
+test_agy_spawn_refused_via_config() {
+  local rec case_dir home proj wt fakebin id out status
+  rec=$(make_spawn_case spawn-config-refused)
+  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+  printf 'agy\n' > "$home/config/crew-harness"
+  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
+    PATH="$fakebin:$BASE_PATH" \
+    "$SPAWN" --mode no-mistakes --yolo off "$id" "$proj" 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "config/crew-harness=agy spawn should be refused"
+  assert_contains "$out" "refused by normal dispatch" "agy config refusal diagnostic wrong"
+  pass "fm-spawn: config/crew-harness=agy is refused"
 }
 
 test_agy_spawn_rejects_secondmate() {
@@ -582,48 +592,35 @@ EOF
     "$SPAWN" --secondmate "$id" "$home" agy 2>&1)
   status=$?
   [ "$status" -ne 0 ] || fail "agy secondmate spawn should be refused"
-  assert_contains "$out" "cannot run a secondmate" "agy secondmate refusal diagnostic wrong"
+  assert_contains "$out" "refused by normal dispatch" "agy secondmate refusal diagnostic wrong"
   pass "fm-spawn: agy secondmate is refused"
 }
 
-test_agy_spawn_rejects_non_tmux_backend() {
-  local rec case_dir home proj wt fakebin id out status
-  rec=$(make_spawn_case spawn-backend)
-  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
-$rec
-EOF
-  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" \
-    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
-    FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" \
-    PATH="$fakebin:$BASE_PATH" \
-    "$SPAWN" --backend herdr --mode no-mistakes --yolo off "$id" "$proj" agy 2>&1)
-  status=$?
-  [ "$status" -ne 0 ] || fail "agy non-tmux spawn should be refused"
-  assert_contains "$out" "tmux backend" "agy backend refusal diagnostic wrong"
-  pass "fm-spawn: agy non-tmux backend is refused before endpoint creation"
+test_agy_control_refused() {
+  if bash -c '. "$1"; fm_control_harness_supported agy' _ "$CONTROL_LIB" 2>/dev/null; then
+    fail "agy control was reported harness-supported"
+  fi
+  if bash -c '. "$1"; fm_control_harness_family agy' _ "$CONTROL_LIB" 2>/dev/null; then
+    fail "agy was mapped to a control family"
+  fi
+  pass "agy control verbs are refused (no control family, not harness-supported)"
 }
 
-test_agy_spawn_rejects_version_mismatch() {
-  local rec case_dir home proj wt fakebin id out status
-  rec=$(make_spawn_case spawn-version)
-  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
-$rec
-EOF
-  # Override the fake agy to report a mismatching version.
-  cat > "$fakebin/agy" <<'SH'
-#!/usr/bin/env bash
-case "${1:-}" in
-  --version) printf '9.9.9\n'; exit 0 ;;
-  *) exit 0 ;;
-esac
-SH
-  chmod +x "$fakebin/agy"
-  out=$(run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id")
-  status=$?
-  [ "$status" -ne 0 ] || fail "agy version-mismatch spawn should be refused"
-  assert_contains "$out" "version-mismatch" "agy version-mismatch diagnostic wrong"
-  pass "fm-spawn: agy version mismatch is refused"
+test_agy_stale_generation_rejected() {
+  local task_id dir stale cur rc
+  task_id="stale-gen-test-$$"
+  dir=$(bash -c '. "$1"; fm_agy_ensure_result_dir "$2"' _ "$AGY_LIB" "$task_id")
+  stale=$(bash -c '. "$1"; fm_agy_result_file "$2" gen-old' _ "$AGY_LIB" "$task_id")
+  cur=$(bash -c '. "$1"; fm_agy_result_file "$2" gen-new' _ "$AGY_LIB" "$task_id")
+  agy_result_json SUCCESS > "$stale"
+  [ "$stale" != "$cur" ] || fail "stale and current generation share a result path"
+  rc=0
+  bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$cur" 2>/dev/null || rc=$?
+  [ "$rc" -ne 0 ] || fail "current generation accepted a stale-generation artifact"
+  bash -c '. "$1"; fm_agy_cleanup "$2"' _ "$AGY_LIB" "$task_id"
+  assert_absent "$stale" "stale artifact survived cleanup"
+  rmdir "$dir" 2>/dev/null || true
+  pass "a stale-generation result is never accepted as the current generation's result"
 }
 
 test_agy_harness_detection_exact_match
@@ -639,7 +636,6 @@ test_agy_result_file_refuses_unsafe_task_id
 test_agy_launch_template_contract
 test_agy_env_scrub_removes_secrets_preserves_others
 test_agy_env_scrub_does_not_mutate_operator_env
-test_agy_effort_flag_omits_unsupported
 test_agy_publish_result_atomic
 test_agy_publish_result_rejects_empty
 test_agy_publish_result_rejects_oversized
@@ -659,8 +655,9 @@ test_agy_denied_actions_not_success
 test_agy_cleanup_removes_result_artifacts
 test_agy_is_running
 test_agy_is_running_not_idle_shell
-test_agy_spawn_succeeds
-test_agy_spawn_records_meta
+test_agy_control_refused
+test_agy_stale_generation_rejected
+test_agy_spawn_refused
+test_agy_spawn_refused_creates_no_meta
+test_agy_spawn_refused_via_config
 test_agy_spawn_rejects_secondmate
-test_agy_spawn_rejects_non_tmux_backend
-test_agy_spawn_rejects_version_mismatch

@@ -1505,7 +1505,7 @@ A throwaway scout was spawned through `bin/fm-spawn.sh --scout --harness omp --m
 
 ## Agy
 
-EXPERIMENTAL and unverified; not in the verified adapter list and refused by `bin/fm-spawn.sh` (secondmate and non-tmux backends), `bin/fm-bootstrap.sh` (verified allowlist), and `bin/fm-quota-choose.sh` (no provider family) until the proof gate below passes.
+EXPERIMENTAL and unverified; not in the verified adapter list and refused by normal dispatch everywhere — `bin/fm-spawn.sh` refuses every agy dispatch (explicit, `config/crew-harness`, secondmate, and the raw launch escape hatch), `bin/fm-bootstrap.sh` excludes it from the verified allowlist, and `bin/fm-quota-choose.sh` rejects it (no provider family).
 The observations here were produced on 2026-09-11 against agy 1.2.1 (`~/.local/bin/agy`, a Go binary) on macOS arm64.
 
 ### Result schema
@@ -1544,7 +1544,9 @@ The run spawns a local `codebase-memory-mcp` child and an `npm exec mcp-remote h
 
 `FM_AGY_LIVE=1 tests/fm-agy-live-e2e.test.sh` is the opt-in guard that submits a real prompt and re-verifies the pinned version and the result schema; it fails loudly naming the installed version when that version does not match the pin.
 
-### End-to-end Hello World (2026-09-11)
+### End-to-end Hello World (2026-09-11, historical)
+
+> This spawn exercise is recorded as historical proof-gate evidence. Agy is now refused by normal dispatch (see the header), so this exercise can no longer be reproduced through `bin/fm-spawn.sh`; the opt-in live guard above is the only sanctioned execution.
 
 A disposable repo (README only) and a disposable task home were spawned through `bin/fm-spawn.sh --mode no-mistakes --yolo off --backend tmux <id> <proj> agy` with the real 1.2.1 binary and a real tmux socket.
 The spawn recorded `harness=agy`, `kind=ship`, `worktree`, `project`, `tasktmp=/tmp/fm-<id>`, and a fresh `spawn_gen` in `state/<id>.meta`.

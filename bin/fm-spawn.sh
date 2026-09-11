@@ -428,8 +428,6 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-gate-refuse-lib.sh"
 # shellcheck source=bin/fm-busy-lib.sh
 . "$SCRIPT_DIR/fm-busy-lib.sh"
-# shellcheck source=bin/fm-agy-lib.sh
-. "$SCRIPT_DIR/fm-agy-lib.sh"
 # shellcheck source=bin/fm-cursor-lib.sh
 . "$SCRIPT_DIR/fm-cursor-lib.sh"
 # shellcheck source=bin/fm-pr-lib.sh
@@ -1553,20 +1551,15 @@ launch_template() {
     # Its turn-end signal is a globally configured Stop hook plus a guarded
     # per-task worktree token, so no launch placeholder belongs here.
     kimi) printf '%s' '__KIMIBIN__ __MODELFLAG__--auto' ;;
-    # AGY is an EXPERIMENTAL, unverified one-shot headless harness: a single
-    # `agy --output-format json ... -p="<brief>"` invocation processes the brief
-    # and exits. There is no TUI, no interactive steer, and no turn-end hook, so
-    # no harness-specific hook is installed below and no secondmate is supported
-    # (refused before endpoint creation, like muse/gemini/rovo).
-    #
-    # The launch template lives in bin/fm-agy-lib.sh (fm_agy_launch_template),
-    # the single owner of the command shape, the exact-version pin, and the
-    # atomic, generation-bound result publication contract. The prompt is
-    # attached to -p with `=` so the flag does not swallow the next flag as its
-    # prompt, and stdout is redirected through a per-generation temp file that
-    # is atomically renamed on completion. Completion is proven only by a
-    # validated result artifact, never by exit code alone.
-    agy) fm_agy_launch_template ;;
+    # agy (Agy CLI) is an EXPERIMENTAL, unverified one-shot adapter and is
+    # DELIBERATELY absent from this case. With no template arm, launch_template
+    # returns nonzero for agy, and the explicit refuse_agy guards in the arg
+    # branches below refuse it before any endpoint is created, so normal
+    # dispatch never reaches a launch. Agy may only be exercised through the
+    # opt-in live guard (tests/fm-agy-live-e2e.test.sh, FM_AGY_LIVE=1), which
+    # invokes the binary directly and validates its result through
+    # bin/fm-agy-lib.sh. Its launch shape, version pin, and result schema stay
+    # documented in bin/fm-agy-lib.sh and references/harness/agy.md.
     # muse (Muse Code): a positional prompt starts the supervised interactive
     # session. --yolo is the single flag that makes a crewmate pane viable: muse
     # ships approval prompts AND a filesystem/network sandbox ON by default
@@ -1620,6 +1613,18 @@ launch_template() {
   esac
 }
 
+# agy (Agy CLI) is an EXPERIMENTAL, unverified one-shot adapter with no verified
+# control, liveness, or result-consumption path, so it is refused by normal
+# dispatch in every form - an explicit `fm-spawn ... agy`, config/crew-harness
+# (or config/secondmate-harness) naming agy, and the raw launch escape hatch -
+# rather than launched blind. The only sanctioned way to exercise it is the
+# opt-in live guard (tests/fm-agy-live-e2e.test.sh, FM_AGY_LIVE=1), which
+# invokes the binary directly and validates its result through bin/fm-agy-lib.sh.
+refuse_agy() {
+  echo "error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness." >&2
+  exit 1
+}
+
 case "$ARG3" in
   *' '*)  # raw launch command (unverified-adapter escape hatch)
     RAW_LAUNCH=1
@@ -1649,10 +1654,12 @@ case "$ARG3" in
       HARNESS=$("$FM_ROOT/bin/fm-harness.sh" crew)
       harness_src='config/crew-harness'
     fi
+    [ "$HARNESS" = agy ] && refuse_agy
     LAUNCH=$(launch_template "$HARNESS" "$KIND") || { echo "error: no launch template for harness '$HARNESS' (from $harness_src or detection); pass a raw launch command to use an unverified adapter" >&2; exit 1; }
     ;;
   *)
     HARNESS=$ARG3
+    [ "$HARNESS" = agy ] && refuse_agy
     LAUNCH=$(launch_template "$HARNESS" "$KIND") || { echo "error: unknown harness '$HARNESS'; pass a raw launch command to use an unverified adapter" >&2; exit 1; }
     ;;
 esac
@@ -1693,27 +1700,13 @@ if [ "$KIND" = secondmate ] && [ "$HARNESS" = rovo ]; then
   exit 1
 fi
 
-# agy is an EXPERIMENTAL, unverified one-shot crewmate/scout adapter. It has no
-# primary supervision protocol, no turn-end hook, and no verified control
-# mechanics, so a secondmate (a firstmate instance that must supervise itself)
-# is refused rather than stood up with no way to arm its watch cycle. Its
-# liveness/collect/interrupt contract is verified only on the tmux backend, so
-# every other backend is refused before an endpoint is created rather than
-# leaving a task the backend cannot observe or stop. The exact version pin is
-# enforced here too, so an auto-updated agy with a different CLI surface is
-# refused loudly instead of launched on stale assumptions.
+# agy (Agy CLI) is an EXPERIMENTAL, unverified one-shot adapter. The `''` and
+# explicit-arg branches above already refuse it via refuse_agy before the launch
+# template lookup, so this block is the raw-launch escape-hatch guard: a raw
+# `agy ...` command (whose first word resolves to agy) is refused here too,
+# rather than bypassing the refusal by naming agy as the first word.
 if [ "$HARNESS" = agy ]; then
-  if [ "$KIND" = secondmate ]; then
-    echo "error: agy is an unverified one-shot crewmate/scout adapter only and cannot run a secondmate; it has no primary supervision protocol. Select a harness verified for secondmates." >&2
-    exit 1
-  fi
-  if [ "$BACKEND" != tmux ]; then
-    echo "error: agy is verified only on the tmux backend; backend=$BACKEND is refused before an endpoint is created." >&2
-    exit 1
-  fi
-  if ! fm_agy_version_pinned; then
-    exit 1
-  fi
+  refuse_agy
 fi
 
 case "$HARNESS" in
@@ -3583,9 +3576,11 @@ EOF
       exclude_path '.fm-kimi-turnend'
       ;;
     agy*)
-      # AGY is headless - it runs, prints JSON, and exits.
-      # No turn-end hook is needed; the watcher detects completion by
-      # capturing the pane and validating the result.json artifact.
+      # agy is refused by normal dispatch above, so this arm is unreachable and
+      # installs no turn-end hook. If agy is ever exercised, it runs only
+      # through the opt-in live guard (tests/fm-agy-live-e2e.test.sh), which
+      # validates the result artifact directly via bin/fm-agy-lib.sh; there is
+      # no production watcher/collection consumer for agy.
       ;;
   esac
 fi
@@ -3812,14 +3807,10 @@ sq_status=$(shell_quote "$STATE/$ID.status")
 sq_runrecord=$(shell_quote "$DATA/$ID/run-record.json")
 sq_tasktmp=$(shell_quote "$TASK_TMP")
 sq_id=$(shell_quote "$ID")
-sq_agylog=$(shell_quote "$(fm_agy_log_file "$ID" "$SPAWN_GEN")")
-sq_agyresult=$(shell_quote "$(fm_agy_result_file "$ID" "$SPAWN_GEN")")
 MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT")
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
 LAUNCH=${LAUNCH//__EFFORTFLAG__/$EFFORTFLAG}
-LAUNCH=${LAUNCH//__AGYLOGFILE__/$sq_agylog}
-LAUNCH=${LAUNCH//__AGYRESULT__/$sq_agyresult}
 if [ "$HARNESS" = rovo ]; then
   ROVOCONFIGOVERRIDE=$(rovo_config_override_flag "$EFFORT" "$DATA" "$STATE" "$ID") || {
     echo "error: could not resolve this task's home paths for rovo's allowedExternalPaths grant" >&2

@@ -3,8 +3,15 @@
 #
 # AGY is an EXPERIMENTAL, unverified Firstmate crewmate harness. It is not in
 # the verified adapter list (AGENTS.md section 4, bin/fm-control-lib.sh,
-# bin/fm-quota-choose.sh) and must never be selected by normal dispatch until
-# the full proof gate in docs/verification/runtime-backends.md passes.
+# bin/fm-quota-choose.sh) and is REFUSED by normal dispatch everywhere:
+# bin/fm-spawn.sh refuses every agy dispatch (explicit, config/crew-harness,
+# secondmate, and the raw launch escape hatch), so no production path reaches
+# this library. The only sanctioned way to exercise agy is the opt-in live
+# guard (tests/fm-agy-live-e2e.test.sh, FM_AGY_LIVE=1), which invokes the binary
+# directly and validates its result through the functions below. There is
+# deliberately no production watcher/collection consumer: the publication,
+# validation, liveness, and cleanup helpers are exercised only by that guard
+# and the portable test suite.
 #
 # Agy runs headless: a single `agy --output-format json ... -p="<brief>"`
 # invocation processes the brief, performs tool work inside the task worktree,
@@ -12,16 +19,18 @@
 # TUI, no turn-end hook, and no data-plane steering.
 #
 # Contract (observed against agy 1.2.1, 2026-09-11):
-# - Kind: crewmate and scout only. No secondmate, no primary.
-# - Backend: tmux only. fm-spawn refuses every other backend before creating
-#   an endpoint (see bin/fm-spawn.sh).
+# - Kind: none by normal dispatch (refused for every kind); the live guard
+#   exercises a one-shot print run only.
+# - Backend: normal dispatch refuses every backend (tmux included) before
+#   creating an endpoint (see bin/fm-spawn.sh); the live guard runs agy as a
+#   direct subprocess, not through a runtime backend.
 # - One-shot: completion is proven only by a validated result artifact, never
 #   by exit code alone and never by rendered spinner text.
-# - Result publication: agy stdout is redirected to a per-generation temp file
-#   and atomically renamed into place by the launch wrapper, so a reader never
-#   observes a half-written result.
-# - Version: exact pin (FM_AGY_PINNED_VERSION, default 1.2.1). A mismatch
-#   refuses launch; it is never a warning.
+# - Result publication: bounded, atomic, task-owned, and generation-bound
+#   (fm_agy_publish_result / fm_agy_result_file); exercised by the live guard
+#   and the portable test suite, never by a production dispatch.
+# - Version: exact pin (FM_AGY_PINNED_VERSION, default 1.2.1). The live guard
+#   refuses a mismatch; it is never a warning.
 # - Environment scrub: the launch template unsets the named ambient secrets
 #   (STITCH_X_GOOG_API_KEY, STITCH_API_KEY, ANTHROPIC_API_KEY, APIFY_API_KEY,
 #   HF_TOKEN) and every other *_API_KEY / *_TOKEN / *_SECRET var in the pane
@@ -150,27 +159,23 @@ fm_agy_ensure_result_dir() {  # <task_id>
 
 # ---- launch ---------------------------------------------------------------
 
-fm_agy_model_flag() {  # <model>
-  local model=$1
-  [ -n "$model" ] && [ "$model" != default ] || return 0
-  printf -- '--model %s ' "$model"
-}
+# The model/effort vocabulary for agy is owned by model_flag_for_harness /
+# effort_flag_for_harness in bin/fm-spawn.sh (--model passthrough, --effort
+# low|medium|high); the lib deliberately holds no parallel copy that could
+# drift from the flags a launch would actually use.
 
-fm_agy_effort_flag() {  # <effort>
-  local effort=$1
-  [ -n "$effort" ] && [ "$effort" != default ] || return 0
-  case "$effort" in
-    low|medium|high) printf -- '--effort %s ' "$effort" ;;
-  esac
-}
-
-# The launch template, emitted for bin/fm-spawn.sh's placeholder substitution.
-# Unlike the historical template, the prompt is attached to -p with `=` so the
-# flag does NOT swallow the following flag as its prompt (the "dashline" bug),
-# and stdout is redirected through a per-generation temp file that is atomically
-# renamed on completion, preserving agy's exit code.
+# The launch template is the documented reference shape for a one-shot agy run
+# (exercised by the portable template-contract test, not by normal dispatch:
+# agy is refused before it can reach a launch). The prompt is attached to -p
+# with `=` so the flag does NOT swallow the next flag as its prompt (the
+# "dashline" bug), and stdout is redirected through a per-generation temp file
+# that is atomically renamed on completion. The template deliberately does NOT
+# end in `exit $rc`: an `exit` would destroy the pane shell and turn a finished
+# task's endpoint `missing` rather than `dead`, breaking relaunch. Completion
+# is proven only by the validated result artifact, never by the shell exit
+# status.
 #
-# Placeholders substituted by fm-spawn.sh:
+# Placeholders (resolved only by a test harness, never by fm-spawn.sh):
 #   __MODELFLAG__   model flag (empty when default)
 #   __EFFORTFLAG__  effort flag (empty when default)
 #   __AGYLOGFILE__  per-generation log file path
@@ -189,7 +194,7 @@ fm_agy_env_scrub_code() {
 
 fm_agy_launch_template() {
   # shellcheck disable=SC2016 # template literal: placeholders expand in the pane
-  printf '%s%s' "$(fm_agy_env_scrub_code)" 'agy --output-format json --dangerously-skip-permissions --add-dir __WORKTREE__ __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ -p="$(__OPINPUT__ encode launch-brief < __BRIEF__)" > __AGYRESULT__.tmp; rc=$?; mv -f __AGYRESULT__.tmp __AGYRESULT__; chmod 600 __AGYRESULT__ 2>/dev/null; exit $rc'
+  printf '%s%s' "$(fm_agy_env_scrub_code)" 'agy --output-format json --dangerously-skip-permissions --add-dir __WORKTREE__ __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ -p="$(__OPINPUT__ encode launch-brief < __BRIEF__)" > __AGYRESULT__.tmp; mv -f __AGYRESULT__.tmp __AGYRESULT__; chmod 600 __AGYRESULT__ 2>/dev/null'
 }
 
 # ---- result publication ---------------------------------------------------

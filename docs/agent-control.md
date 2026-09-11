@@ -36,7 +36,7 @@ A recorded `harness=` is not always an exact adapter name: a task launched from 
 
 An exit that delivers lifecycle input but cannot prove the agent stopped fails with `exit=unconfirmed`, reports the observed agent state and any interrupt cancellation claim, and never claims that nothing changed.
 Interrupt never rewrites busy state as proof of its own success.
-agy is experimental and unverified, so it is deliberately absent from the control tables in `bin/fm-control-lib.sh`: every control-plane verb is refused for it until its interrupt/exit/relaunch postconditions are verified against the live binary ([`references/harness/agy.md`](../.agents/skills/harness-adapters/references/harness/agy.md)).
+agy is experimental and unverified, so it is deliberately absent from the control tables in `bin/fm-control-lib.sh`: every control-plane verb is refused for it because its interrupt/exit/relaunch postconditions are unverified against the live binary ([`references/harness/agy.md`](../.agents/skills/harness-adapters/references/harness/agy.md)).
 Claude exposes no lifecycle acknowledgement for a manual interrupt, so delivery succeeds with `cancel=unconfirmed` and its adapter-owned busy state remains as observed.
 muse's session log records `terminal=cancelled` for the interrupted run, so the control plane reports `cancel=confirmed` only after observing that exact acknowledgement.
 
