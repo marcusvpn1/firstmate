@@ -1,0 +1,50 @@
+# Live validation transcript: docs/streamline-firstmate-context
+
+worktree: /Users/marcusnascimento/.no-mistakes/worktrees/2e94fa377077/01M28Z8N270WCG46NXWFFV73GT
+target: 1c47e2b01b4035341e70d96b09dea8adcb15f9d3
+base:   69e5c7fd1e83f4a6ee3385658af006e9b38c4f7c
+
+## 1. Documentation audience + local-link consumer (live)
+$ bin/fm-doc-audience-check.sh
+fm-doc-audience-check: ok surfaces=100 local_links=358
+exit=0
+
+## 2. Documentation audience regression test (live, drives the CLI)
+$ bash tests/fm-documentation-audiences.test.sh
+ok - documentation inventory classifies every maintained prose surface exactly once
+ok - classification, setup routing, and maintained-prose scope fail safely
+ok - required documentation owner pointers cannot silently disappear
+ok - local links resolve while dates, versions, commands, and incident prose remain semantically reviewed
+exit=0
+
+## 3. AGENTS.md agent-memory convention consumer (live, no-op expected)
+$ bin/fm-ensure-agents-md.sh .
+unchanged: AGENTS.md with CLAUDE.md @AGENTS.md pointer in /Users/marcusnascimento/.no-mistakes/worktrees/2e94fa377077/01M28Z8N270WCG46NXWFFV73GT
+exit=0
+
+## 4. Bounded startup-memory accounting surface (live)
+$ FM_HOME=<tmp> bin/fm-startup-memory-budget.sh report   # small memory
+estimator=ceil(UTF-8 bytes / 3) conservative-local-estimate
+role=primary
+effective_budget_tokens=7500
+file=data/captain.md bytes=22 estimated_tokens=8 status=present
+file=data/captain-shared.md bytes=0 estimated_tokens=0 status=absent
+file=data/learnings.md bytes=19 estimated_tokens=7 status=present
+total_estimated_tokens=15
+budget_status=within-budget
+$ FM_HOME=<tmp> bin/fm-startup-memory-budget.sh report   # oversized memory
+estimator=ceil(UTF-8 bytes / 3) conservative-local-estimate
+role=primary
+effective_budget_tokens=7500
+file=data/captain.md bytes=22 estimated_tokens=8 status=present
+file=data/captain-shared.md bytes=0 estimated_tokens=0 status=absent
+file=data/learnings.md bytes=30025 estimated_tokens=10009 status=present
+total_estimated_tokens=10017
+budget_status=over-budget
+
+## 5. Always-loaded AGENTS.md byte/token contract (base vs target)
+base AGENTS.md bytes=77575 lines=605 estimated_tokens=25859
+target AGENTS.md bytes=57402 lines=495 estimated_tokens=19134
+saved bytes=20173 (26%)
+exhaustive state inventory marker '<id>.inbox/' in base: 1
+exhaustive state inventory marker '<id>.inbox/' in target: 0
