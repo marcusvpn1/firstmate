@@ -173,7 +173,7 @@ fm_agy_effort_flag() {  # <effort>
 #   __BRIEF__       brief file path
 fm_agy_launch_template() {
   # shellcheck disable=SC2016 # template literal: placeholders expand in the pane
-  printf '%s' 'agy --output-format json --dangerously-skip-permissions --add-dir __WORKTREE__ __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ -p="$(__OPINPUT__ encode launch-brief < __BRIEF__)" > __AGYRESULT__.tmp; rc=$?; mv -f __AGYRESULT__.tmp __AGYRESULT__; exit $rc'
+  printf '%s' 'agy --output-format json --dangerously-skip-permissions --add-dir __WORKTREE__ __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ -p="$(__OPINPUT__ encode launch-brief < __BRIEF__)" > __AGYRESULT__.tmp; rc=$?; mv -f __AGYRESULT__.tmp __AGYRESULT__; chmod 600 __AGYRESULT__ 2>/dev/null; exit $rc'
 }
 
 # ---- result publication ---------------------------------------------------

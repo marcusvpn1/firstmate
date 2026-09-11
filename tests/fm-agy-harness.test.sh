@@ -155,6 +155,7 @@ test_agy_launch_template_contract() {
   assert_contains "$out" '-p="$(__OPINPUT__ encode launch-brief < __BRIEF__)"' "template missing the -p= attached prompt"
   assert_contains "$out" '> __AGYRESULT__.tmp' "template missing generation-bound redirect"
   assert_contains "$out" 'mv -f __AGYRESULT__.tmp __AGYRESULT__' "template missing atomic rename"
+  assert_contains "$out" 'chmod 600 __AGYRESULT__' "template missing private-mode chmod"
   if printf '%s' "$out" | grep -q -- '-p '; then
     fail "template still uses the bare -p flag (the dashline bug)"
   fi

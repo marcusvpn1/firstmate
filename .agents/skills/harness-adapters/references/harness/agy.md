@@ -48,5 +48,6 @@ jq is a hard dependency for validation and interpretation; its absence fails exp
 
 ## Not verified
 
-The following remain unproven until the proof gate passes: the permission boundary (no writes outside the worktree, no credential leakage), live liveness through the backend, live interrupt/cancel/exit postconditions, and a full end-to-end prompt-submitting run.
-Until then agy stays out of the verified adapter list and fails closed wherever it is named.
+The permission boundary remains unproven: agy spawns MCP children that expose a Google API key in process arguments and carry unbounded network access, and `--sandbox` is unverified.
+Live liveness through the tmux backend, the generation-bound result publication, and a full end-to-end Hello World spawn are verified on agy 1.2.1 (`../../../../docs/verification/runtime-backends.md`).
+Until the permission boundary is decided, agy stays out of the verified adapter list and fails closed wherever it is named.

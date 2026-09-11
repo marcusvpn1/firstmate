@@ -1544,6 +1544,17 @@ The run spawns a local `codebase-memory-mcp` child and an `npm exec mcp-remote h
 
 `FM_AGY_LIVE=1 tests/fm-agy-live-e2e.test.sh` is the opt-in guard that submits a real prompt and re-verifies the pinned version and the result schema; it fails loudly naming the installed version when that version does not match the pin.
 
-### Not yet verified
+### End-to-end Hello World (2026-09-11)
 
-The permission boundary, live liveness through the backend, live interrupt/cancel/exit postconditions, and the full Hello World acceptance exercise are unproven; agy stays out of the verified adapter list until they are.
+A disposable repo (README only) and a disposable task home were spawned through `bin/fm-spawn.sh --mode no-mistakes --yolo off --backend tmux <id> <proj> agy` with the real 1.2.1 binary and a real tmux socket.
+The spawn recorded `harness=agy`, `kind=ship`, `worktree`, `project`, `tasktmp=/tmp/fm-<id>`, and a fresh `spawn_gen` in `state/<id>.meta`.
+The pane read as the exact `agy` process while running, then a shell after exit, so liveness is observable and terminal.
+agy created `hello.txt` in the task worktree with exactly `Hello, World!\n`, the only worktree change beside the pre-existing README, and the parent Firstmate worktree was unchanged.
+The result was atomically published to the generation-bound `/tmp/fm-<id>/result-<spawn_gen>.json` and validated as `status` `SUCCESS` with no `denied_actions`.
+This is the exact brief-and-spawn acceptance exercise the proof gate requires, and it passes on agy 1.2.1.
+
+### Permission boundary (open finding)
+
+The run spawns two MCP children: a local `codebase-memory-mcp` and an `npm exec mcp-remote https://stitch.googleapis.com/mcp` whose process arguments expose a Google API key, so agy has unbounded network access and a credential visible in `ps` output.
+agy also reads `~/.gemini/antigravity-cli` state and, without `--add-dir`, writes files into `~/.gemini/antigravity-cli/scratch/` instead of the task worktree.
+The adapter does not yet prove the sandbox/permission boundary (`--sandbox` is unverified), so promotion to the verified list stays gated on a decision about this network/home/credential surface.
