@@ -37,7 +37,7 @@ At the boundary, record the durable state before requesting any relaunch, includ
 ### Primary firstmate
 
 Do not apply automatic or periodic relaunch to the primary firstmate session.
-The primary is in a live captain conversation, uses a flat-rate captain seat for this purpose, and is already restart-safe through the session-start digest.
+The primary is in a live captain conversation on the captain's own seat and is already restart-safe through the session-start digest.
 Leave clearing or session reset to the captain's own timing.
 
 ### Load-bearing caveat
