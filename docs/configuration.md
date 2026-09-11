@@ -42,7 +42,7 @@ A genuinely no-op heartbeat is absorbed in bash and never reaches Pi, and every 
 Away mode still declines every wake offer, and a broken branch still falls back to today's wake-to-main path.
 The branch's role stays bounded exactly as the captain-approved architecture set it: it cannot merge a PR, land local work, or freshly spawn, and every existing captain gate remains unchanged.
 Homes on any other primary harness never load this feature and are entirely unaffected.
-`AGENTS.md`'s `state/` inventory routes the branch's runtime files to their format and lifecycle owners.
+The branch's runtime files route to their format and lifecycle owners through `bin/fm-branch-outcome.sh` for the durable outcome store, [docs/pi-supervision-branch.md](pi-supervision-branch.md) for branch-session and mirror state, and [docs/watcher-continuity.md](watcher-continuity.md) for wake-row eligibility and acknowledgement.
 A captain-facing (verdict `captain`) branch outcome persists as one exact, sequence-keyed visible transcript entry and then opens one sequence-keyed processing turn on main, which stays open until main acknowledges that sequence through its `fm_branch_processed` tool.
 The branch prompt's "Verdict: routine or captain" section owns the distinction between captain-facing, unsolicited routine, and unchanged-review outcomes.
 The generated [Pi supervision protocol](supervision-protocols/pi.md) owns main's event ownership, acknowledgement duty, and conversational treatment for merged outcomes, while the persisted entry itself owns captain visibility.
