@@ -1625,24 +1625,27 @@ refuse_agy() {
   exit 1
 }
 
-# True when a raw launch command names the exact agy executable in any command
-# word, including when it is wrapped behind a launcher (`env FOO=bar agy ...`,
+# True when a raw launch command names the agy executable in any command word,
+# including when it is wrapped behind a launcher (`env FOO=bar agy ...`,
 # `command agy ...`, `nohup agy ...`, `sh -c 'agy ...'`) and in any letter case
 # (`AGY ...`): the executable lookup is case-insensitive on the target platform,
 # so an uppercase spelling resolves to the same binary. The first-word harness
 # derivation above cannot see through a wrapper, so agy's raw-launch refusal
-# must inspect every word. Quote and escape characters are stripped so the
-# wrapped forms are visible. This is deliberately over-eager: any literal `agy`
-# word (or path ending in /agy) refuses, because the refusal is fail-closed and
-# the escape hatch is for unverified adapters, not a place to spell agy as an
-# argument. Globbing is disabled so a file named `agy` cannot expand into a
-# false refusal.
+# must inspect every word. Shell grouping and expansion fuse the executable to
+# their operators (`(agy ...)`, `A=agy; $A ...`, `${AGY:-agy}`, `$(printf agy)`),
+# so every character that is not an identifier
+# character is treated as a word boundary before scanning, exposing the agy
+# token instead of leaving it glued to `(` / `$` / `;` / `=`. This is
+# deliberately over-eager: any literal `agy` word refuses, because the refusal
+# is fail-closed and the escape hatch is for unverified adapters, not a place to
+# spell agy as an argument. Globbing is disabled so a file named `agy` cannot
+# expand into a false refusal.
 raw_command_invokes_agy() {
-  local word candidate
+  local word normalized
+  normalized=$(printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9_' ' ')
   set -f
-  for word in $1; do
-    candidate=${word//[\'\"\\]/}
-    case "${candidate##*/}" in
+  for word in $normalized; do
+    case "$word" in
       [aA][gG][yY]) set +f; return 0 ;;
     esac
   done
