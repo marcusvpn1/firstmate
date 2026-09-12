@@ -207,7 +207,7 @@ test_agy_publish_result_atomic() {
   out=$(bash -c '. "$1"; fm_agy_publish_result "$2" "$3"' _ "$AGY_LIB" "$file" '{"status":"SUCCESS"}')
   assert_contains "$out" "publish-ok" "publish did not report ok"
   assert_present "$file" "result file not created"
-  [ "$(stat -f '%Lp' "$file" 2>/dev/null || stat -c '%a' "$file")" = 600 ] || fail "result file not private mode"
+  [ "$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file")" = 600 ] || fail "result file not private mode"
   pass "publish writes the result atomically with private mode"
 }
 
