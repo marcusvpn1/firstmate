@@ -614,9 +614,11 @@ EOF
 # so a command that wraps agy behind a launcher (env/command/nohup/sh -c) hid it
 # from the first-word refusal and reached the launch path. This drives the real
 # fm-spawn.sh for each wrapper and asserts the refusal fires before any endpoint.
+# Case variants are covered because the executable lookup is case-insensitive on
+# the target platform, so `AGY` resolves to the same binary.
 test_agy_spawn_refused_wrapped_raw_command() {
   local raw rec case_dir home proj wt fakebin id out status idx=0 failures=''
-  for raw in 'env FOO=bar agy -p hello' 'command agy -p hello' 'nohup agy -p hello' "sh -c 'agy -p hello'"; do
+  for raw in 'env FOO=bar agy -p hello' 'command agy -p hello' 'nohup agy -p hello' "sh -c 'agy -p hello'" 'AGY -p hello' 'env FOO=bar AGY -p hello'; do
     idx=$((idx + 1))
     rec=$(make_spawn_case "spawn-raw-wrapped-$idx")
     IFS='|' read -r case_dir home proj wt fakebin id <<EOF
@@ -640,7 +642,7 @@ raw='$raw' created $home/state/$id.meta"
     fi
   done
   [ -z "$failures" ] || fail "a wrapped raw launch command bypassed the agy refusal:$failures"
-  pass "fm-spawn: a raw command wrapping agy behind env/command/nohup/sh is refused"
+  pass "fm-spawn: a raw command wrapping agy behind env/command/nohup/sh, or spelling it in another case, is refused"
 }
 
 test_agy_control_refused() {

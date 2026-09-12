@@ -1627,7 +1627,9 @@ refuse_agy() {
 
 # True when a raw launch command names the exact agy executable in any command
 # word, including when it is wrapped behind a launcher (`env FOO=bar agy ...`,
-# `command agy ...`, `nohup agy ...`, `sh -c 'agy ...'`). The first-word harness
+# `command agy ...`, `nohup agy ...`, `sh -c 'agy ...'`) and in any letter case
+# (`AGY ...`): the executable lookup is case-insensitive on the target platform,
+# so an uppercase spelling resolves to the same binary. The first-word harness
 # derivation above cannot see through a wrapper, so agy's raw-launch refusal
 # must inspect every word. Quote and escape characters are stripped so the
 # wrapped forms are visible. This is deliberately over-eager: any literal `agy`
@@ -1641,7 +1643,7 @@ raw_command_invokes_agy() {
   for word in $1; do
     candidate=${word//[\'\"\\]/}
     case "${candidate##*/}" in
-      agy) set +f; return 0 ;;
+      [aA][gG][yY]) set +f; return 0 ;;
     esac
   done
   set +f
