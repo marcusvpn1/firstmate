@@ -1,16 +1,43 @@
 #!/usr/bin/env bash
 # Behavior tests for the AGY headless-crewmate harness adapter.
+#
+# These exercise the adapter through its public functions and the fm-spawn.sh
+# interface. They never assert implementation-source bytes; the launch command
+# shape is pinned by calling fm_agy_launch_template and asserting the observable
+# contract (the -p= fix, the generation-bound redirect, the json output mode).
 set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
+# bin/fm-harness.sh checks verified ENV markers before ancestry. A suite run
+# from inside Cursor/Claude/Pi/Grok/Gemini/rovo/omp inherits those markers,
+# which outrank the fake ancestry the detection cases set up. Drop the ambient
+# markers so the asserted verdict does not depend on which harness launched
+# the suite.
+unset CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS GROK_AGENT CURSOR_AGENT CURSOR_INVOKED_AS \
+  GEMINI_CLI ATLASSIAN_AGENT_TYPE ROVODEV_CLI FM_OMP_HARNESS
+
 AGY_LIB="$ROOT/bin/fm-agy-lib.sh"
 SPAWN="$ROOT/bin/fm-spawn.sh"
+CONTROL_LIB="$ROOT/bin/fm-control-lib.sh"
 TMP_ROOT=$(fm_test_tmproot fm-agy-harness)
 PYTHON_BIN=$(command -v python3) || fail "test needs python3"
 PYTHON_BIN_DIR=$(dirname "$PYTHON_BIN")
 BASE_PATH=${FM_TEST_BASE_PATH:-$PYTHON_BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin}
+PINNED_VERSION="1.2.1"
+
+# ---- helpers --------------------------------------------------------------
+
+# A valid real-schema result object (observed agy 1.2.1).
+agy_result_json() {  # <status>
+  local status=$1 err=''
+  if [ "$status" = ERROR ]; then
+    err=',"error":"something failed"'
+  fi
+  printf '{"conversation_id":"c-1","status":"%s","response":"done","duration_seconds":1.5,"num_turns":1,"usage":{"input_tokens":10,"output_tokens":2,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":12}%s}' \
+    "$status" "$err"
+}
 
 # ---- agy lib unit tests ---------------------------------------------------
 
@@ -19,14 +46,14 @@ test_agy_detect_finds_installed_binary() {
   fakebin=$(fm_fakebin "$TMP_ROOT/detect-ok")
   cat > "$fakebin/agy" <<'SH'
 #!/usr/bin/env bash
-printf '1.1.8\n'
+printf '1.2.1\n'
 SH
   chmod +x "$fakebin/agy"
 
   rc=0
   out=$(PATH="$fakebin:$BASE_PATH" bash -c '. "$1"; fm_agy_detect' _ "$AGY_LIB" 2>&1) || rc=$?
   expect_code 0 "$rc" "agy_detect failed on a found binary"
-  assert_contains "$out" "1.1.8" "agy_detect did not report version"
+  assert_contains "$out" "1.2.1" "agy_detect did not report version"
   pass "agy_detect finds and reports the installed version"
 }
 
@@ -41,13 +68,45 @@ test_agy_detect_reports_not_found() {
   pass "agy_detect fails when agy is not on PATH"
 }
 
+test_agy_version_pinned_accepts_match() {
+  local fakebin out rc
+  fakebin=$(fm_fakebin "$TMP_ROOT/version-match")
+  cat > "$fakebin/agy" <<'SH'
+#!/usr/bin/env bash
+printf '1.2.1\n'
+SH
+  chmod +x "$fakebin/agy"
+
+  rc=0
+  out=$(PATH="$fakebin:$BASE_PATH" bash -c '. "$1"; fm_agy_version_pinned' _ "$AGY_LIB" 2>&1) || rc=$?
+  expect_code 0 "$rc" "version_pinned rejected a matching version"
+  assert_contains "$out" "version-ok" "version_pinned did not report version-ok"
+  pass "agy_version_pinned accepts the pinned version"
+}
+
+test_agy_version_pinned_rejects_mismatch() {
+  local fakebin out rc
+  fakebin=$(fm_fakebin "$TMP_ROOT/version-mismatch")
+  cat > "$fakebin/agy" <<'SH'
+#!/usr/bin/env bash
+printf '9.9.9\n'
+SH
+  chmod +x "$fakebin/agy"
+
+  rc=0
+  out=$(PATH="$fakebin:$BASE_PATH" bash -c '. "$1"; fm_agy_version_pinned' _ "$AGY_LIB" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "version_pinned accepted a mismatching version"
+  assert_contains "$out" "version-mismatch" "version_pinned diagnostic wrong"
+  pass "agy_version_pinned refuses a mismatching version"
+}
+
 test_agy_auth_status_ok() {
   local fakebin out
   fakebin=$(fm_fakebin "$TMP_ROOT/auth-ok")
   cat > "$fakebin/agy" <<'SH'
 #!/usr/bin/env bash
 case "${1:-}" in
-  models) printf 'Available models:\n  model-a\n  model-b\n'; exit 0 ;;
+  models) printf 'Available models:\n  model-a\n'; exit 0 ;;
   *) exit 0 ;;
 esac
 SH
@@ -71,369 +130,315 @@ SH
   rc=0
   out=$(PATH="$fakebin:$BASE_PATH" bash -c '. "$1"; fm_agy_auth_status' _ "$AGY_LIB" 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || fail "agy_auth succeeded when models command failed"
-  assert_contains "$out" "auth-unverified" "agy_auth did not report failure"
   pass "agy_auth_status fails when agy models command fails"
 }
 
-test_agy_launch_cmd_shape() {
-  local fakebin brief result log out
-  fakebin=$(fm_fakebin "$TMP_ROOT/launch")
-  brief="$TMP_ROOT/brief.md"
-  result="$TMP_ROOT/result.json"
-  log="$TMP_ROOT/agy.log"
-  printf 'task description\n' > "$brief"
+# ---- result path generation binding --------------------------------------
 
-  out=$(bash -c '. "$1"; fm_agy_launch_cmd "$2" "$3" "$4"' _ \
-    "$AGY_LIB" "$brief" "$result" "$log" 2>&1)
-  assert_contains "$out" 'agy -p' "launch cmd missing agy invocation"
-  assert_contains "$out" '--output-format json' "launch cmd missing output format"
-  assert_contains "$out" '--dangerously-skip-permissions' "launch cmd missing permissions flag"
-  assert_contains "$out" '--print-timeout' "launch cmd missing timeout"
-  assert_contains "$out" '--log-file' "launch cmd missing log file"
-  pass "agy_launch_cmd produces the expected command shape"
+test_agy_result_file_binds_generation() {
+  local f1 f2
+  f1=$(bash -c '. "$1"; fm_agy_result_file t gen-a' _ "$AGY_LIB")
+  f2=$(bash -c '. "$1"; fm_agy_result_file t gen-b' _ "$AGY_LIB")
+  [ "$f1" != "$f2" ] || fail "result file did not change with generation"
+  assert_contains "$f1" "result-gen-a.json" "result file missing generation token"
+  assert_contains "$f2" "result-gen-b.json" "result file missing generation token"
+  pass "result file path is bound to task id plus spawn generation"
 }
 
-test_agy_launch_cmd_includes_model() {
-  local fakebin brief result log out
-  fakebin=$(fm_fakebin "$TMP_ROOT/launch-model")
-  brief="$TMP_ROOT/brief.md"
-  result="$TMP_ROOT/result.json"
-  log="$TMP_ROOT/agy.log"
-  printf 'task description\n' > "$brief"
-
-  out=$(bash -c '. "$1"; fm_agy_launch_cmd "$2" "$3" "$4" "custom/model" ""' _ \
-    "$AGY_LIB" "$brief" "$result" "$log" 2>&1)
-  assert_contains "$out" '--model custom/model' "launch cmd missing model flag"
-  pass "agy_launch_cmd includes model when specified"
-}
-
-test_agy_launch_cmd_includes_effort() {
-  local fakebin brief result log out
-  fakebin=$(fm_fakebin "$TMP_ROOT/launch-effort")
-  brief="$TMP_ROOT/brief.md"
-  result="$TMP_ROOT/result.json"
-  log="$TMP_ROOT/agy.log"
-  printf 'task description\n' > "$brief"
-
-  out=$(bash -c '. "$1"; fm_agy_launch_cmd "$2" "$3" "$4" "" "high"' _ \
-    "$AGY_LIB" "$brief" "$result" "$log" 2>&1)
-  assert_contains "$out" '--effort high' "launch cmd missing effort flag"
-  pass "agy_launch_cmd includes effort when specified"
-}
-
-test_agy_launch_cmd_omits_unsupported_effort() {
-  local fakebin brief result log out
-  fakebin=$(fm_fakebin "$TMP_ROOT/launch-effort-xhigh")
-  brief="$TMP_ROOT/brief.md"
-  result="$TMP_ROOT/result.json"
-  log="$TMP_ROOT/agy.log"
-  printf 'task description\n' > "$brief"
-
-  out=$(bash -c '. "$1"; fm_agy_launch_cmd "$2" "$3" "$4" "" "xhigh"' _ \
-    "$AGY_LIB" "$brief" "$result" "$log" 2>&1)
-  if printf '%s\n' "$out" | grep -q 'effort'; then
-    fail "agy_launch_cmd emitted unsupported effort xhigh"
+test_agy_result_file_refuses_unsafe_task_id() {
+  if bash -c '. "$1"; fm_agy_result_dir "../etc"' _ "$AGY_LIB" >/dev/null 2>&1; then
+    fail "result dir accepted a path-traversal task id"
   fi
-  pass "agy_launch_cmd omits unsupported effort xhigh"
+  pass "result dir refuses a path-traversal task id"
 }
 
-# ---- collect output tests --------------------------------------------------
+# ---- launch template contract --------------------------------------------
 
-test_agy_collect_output_multiline_json() {
-  local dir out rc
-  dir="$TMP_ROOT/collect-multiline"
-  mkdir -p "$dir"
+test_agy_launch_template_contract() {
+  local out
+  out=$(bash -c '. "$1"; fm_agy_launch_template' _ "$AGY_LIB")
+  assert_contains "$out" 'agy --output-format json' "template missing invocation/output mode"
+  assert_contains "$out" '--dangerously-skip-permissions' "template missing permission flag"
+  assert_contains "$out" '--add-dir __WORKTREE__' "template missing the worktree --add-dir"
+  # shellcheck disable=SC2016 # literal search string: the -p= placeholder
+  assert_contains "$out" '-p="$(__OPINPUT__ encode launch-brief < __BRIEF__)"' "template missing the -p= attached prompt"
+  assert_contains "$out" '> __AGYRESULT__.tmp' "template missing generation-bound redirect"
+  assert_contains "$out" 'mv -f __AGYRESULT__.tmp __AGYRESULT__' "template missing atomic rename"
+  assert_contains "$out" 'chmod 600 __AGYRESULT__' "template missing private-mode chmod"
+  assert_contains "$out" 'unset STITCH_X_GOOG_API_KEY STITCH_API_KEY ANTHROPIC_API_KEY APIFY_API_KEY HF_TOKEN' "template missing the ambient-secret scrub"
+  assert_contains "$out" '_API_KEY' "template missing the wildcard secret-pattern scrub"
+  if printf '%s' "$out" | grep -q -- '-p '; then
+    fail "template still uses the bare -p flag (the dashline bug)"
+  fi
+  if printf '%s' "$out" | grep -q 'exit'; then
+    fail "template still ends the pane shell with 'exit' (destroys the endpoint)"
+  fi
+  pass "launch template fixes the -p flag, redirects to a generation-bound temp file, and scrubs ambient secrets"
+}
 
-  rc=0
-  out=$(bash -c '
+test_agy_env_scrub_removes_secrets_preserves_others() {
+  local out
+  # The emitted fragment must unset the named secrets plus every other
+  # *_API_KEY / *_TOKEN / *_SECRET var, while leaving unrelated vars intact.
+  out=$(STITCH_X_GOOG_API_KEY=sk1 STITCH_API_KEY=sk2 ANTHROPIC_API_KEY=ak APIFY_API_KEY=af HF_TOKEN=hf \
+        GITHUB_TOKEN=gh MY_CUSTOM_SECRET=sec KEEP_ME=kept PATH="$PATH" \
+        bash -c '
     . "$1"
-    fm_backend_tmux_capture() {
-      printf "%s\n" \
-        "some banner line" \
-        "{" \
-        "  \"status\": \"success\"," \
-        "  \"changed_files\": [\"a.txt\"]," \
-        "  \"summary\": \"done\"" \
-        "}" \
-        "user@host:~\$ "
-    }
-    fm_agy_collect_output dummy-target "$2"
-  ' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
-  expect_code 0 "$rc" "collect_output failed on pretty multi-line JSON"
-  assert_contains "$out" "collect-ok" "collect_output did not report ok"
-  bash -c '. "$1"; fm_agy_validate_schema "$2"' _ "$AGY_LIB" "$dir/result.json" >/dev/null \
-    || fail "collected multi-line JSON failed schema validation"
-  grep -q 'user@host' "$dir/result.json" && fail "trailing prompt noise leaked into result.json"
-  pass "collect_output extracts pretty multi-line JSON and drops trailing noise"
+    eval "$(fm_agy_env_scrub_code)"
+    for _v in STITCH_X_GOOG_API_KEY STITCH_API_KEY ANTHROPIC_API_KEY APIFY_API_KEY HF_TOKEN GITHUB_TOKEN MY_CUSTOM_SECRET; do
+      [ -z "${!_v:-}" ] || { printf "leaked:%s\n" "$_v"; exit 1; }
+    done
+    [ "${KEEP_ME:-}" = kept ] || { printf "dropped:KEEP_ME\n"; exit 1; }
+    printf "scrub-ok\n"
+  ' _ "$AGY_LIB" 2>&1) || {
+    fail "env scrub leaked a secret or dropped an unrelated var: $out"
+  }
+  assert_contains "$out" 'scrub-ok' "env scrub did not reach the ok marker"
+  pass "env scrub removes every secret-patterned var and preserves unrelated vars"
 }
 
-test_agy_collect_output_singleline_json() {
-  local dir out rc
-  dir="$TMP_ROOT/collect-singleline"
+# ---- result publication ---------------------------------------------------
+
+test_agy_publish_result_atomic() {
+  local dir file out
+  dir="$TMP_ROOT/publish"
   mkdir -p "$dir"
+  file="$dir/result.json"
+  out=$(bash -c '. "$1"; fm_agy_publish_result "$2" "$3"' _ "$AGY_LIB" "$file" '{"status":"SUCCESS"}')
+  assert_contains "$out" "publish-ok" "publish did not report ok"
+  assert_present "$file" "result file not created"
+  [ "$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file")" = 600 ] || fail "result file not private mode"
+  pass "publish writes the result atomically with private mode"
+}
 
+test_agy_publish_result_rejects_empty() {
+  local out rc
   rc=0
-  out=$(bash -c '
-    . "$1"
-    fm_backend_tmux_capture() {
-      printf "%s\n" \
-        "some banner line" \
-        "{\"status\": \"success\", \"changed_files\": [\"a.txt\"], \"summary\": \"done\"}" \
-        "user@host:~\$ "
-    }
-    fm_agy_collect_output dummy-target "$2"
-  ' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
-  expect_code 0 "$rc" "collect_output failed on compact single-line JSON"
-  assert_contains "$out" "collect-ok" "collect_output did not report ok"
-  bash -c '. "$1"; fm_agy_validate_schema "$2"' _ "$AGY_LIB" "$dir/result.json" >/dev/null \
-    || fail "collected single-line JSON failed schema validation"
-  grep -q 'user@host' "$dir/result.json" && fail "trailing prompt noise leaked into result.json"
-  pass "collect_output extracts compact single-line JSON and drops trailing noise"
+  out=$(bash -c '. "$1"; fm_agy_publish_result "$2" ""' _ "$AGY_LIB" "$TMP_ROOT/empty.json" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "publish accepted empty result"
+  assert_contains "$out" "empty" "publish empty diagnostic wrong"
+  pass "publish rejects an empty result"
 }
 
-# ---- result schema validation tests ---------------------------------------
-
-make_valid_result() {
-  local dir=$1 status=${2:-success}
-  cat > "$dir/result.json" <<EOF
-{
-  "status": "$status",
-  "changed_files": ["src/main.py", "tests/test_main.py"],
-  "exit_code": 0,
-  "summary": "Fixed the bug in main.py",
-  "duration_ms": 12345
-}
-EOF
+test_agy_publish_result_rejects_oversized() {
+  local out rc
+  rc=0
+  out=$(FM_AGY_RESULT_MAX_BYTES=10 bash -c '. "$1"; fm_agy_publish_result "$2" "$3"' _ "$AGY_LIB" "$TMP_ROOT/big.json" 'this is far more than ten bytes' 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "publish accepted oversized result"
+  assert_contains "$out" "oversized" "publish oversized diagnostic wrong"
+  pass "publish rejects an oversized result"
 }
 
-test_agy_validate_accepts_valid_result() {
+# ---- result validation ----------------------------------------------------
+
+test_agy_validate_accepts_success() {
   local dir out rc
   dir="$TMP_ROOT/validate-ok"
   mkdir -p "$dir"
-  make_valid_result "$dir" success
-
+  agy_result_json SUCCESS > "$dir/result.json"
   rc=0
-  out=$(bash -c '. "$1"; fm_agy_validate_schema "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
-  expect_code 0 "$rc" "validate_schema rejected a valid result"
-  assert_contains "$out" "validate-ok" "validate_schema did not report ok"
-  pass "validate_schema accepts a valid success result"
+  out=$(bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
+  expect_code 0 "$rc" "validate rejected a valid SUCCESS result"
+  pass "validate accepts a valid SUCCESS result"
 }
 
-test_agy_validate_accepts_error_result() {
+test_agy_validate_accepts_error() {
   local dir out rc
-  dir="$TMP_ROOT/validate-error"
+  dir="$TMP_ROOT/validate-err"
   mkdir -p "$dir"
-  make_valid_result "$dir" error
-
+  agy_result_json ERROR > "$dir/result.json"
   rc=0
-  out=$(bash -c '. "$1"; fm_agy_validate_schema "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
-  expect_code 0 "$rc" "validate_schema rejected a valid error result"
-  assert_contains "$out" "validate-ok" "validate_schema did not report ok"
-  pass "validate_schema accepts a valid error result"
+  out=$(bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
+  expect_code 0 "$rc" "validate rejected a valid ERROR result"
+  pass "validate accepts a valid ERROR result"
 }
 
 test_agy_validate_rejects_missing_file() {
   local out rc
   rc=0
-  out=$(bash -c '. "$1"; fm_agy_validate_schema "$2"' _ "$AGY_LIB" \
-    "$TMP_ROOT/nonexistent.json" 2>&1) || rc=$?
-  [ "$rc" -ne 0 ] || fail "validate_schema accepted a nonexistent file"
-  assert_contains "$out" "not found" "validate_schema missing-file diagnostic wrong"
-  pass "validate_schema rejects a missing result file"
+  out=$(bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$TMP_ROOT/nope.json" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "validate accepted a missing file"
+  assert_contains "$out" "not found" "validate missing-file diagnostic wrong"
+  pass "validate rejects a missing file"
 }
 
-test_agy_validate_rejects_empty_file() {
+test_agy_validate_rejects_empty() {
   local dir out rc
   dir="$TMP_ROOT/validate-empty"
   mkdir -p "$dir"
   : > "$dir/result.json"
-
   rc=0
-  out=$(bash -c '. "$1"; fm_agy_validate_schema "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
-  [ "$rc" -ne 0 ] || fail "validate_schema accepted an empty result file"
-  assert_contains "$out" "empty" "validate_schema empty-file diagnostic wrong"
-  pass "validate_schema rejects an empty result file"
+  out=$(bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "validate accepted an empty file"
+  assert_contains "$out" "empty" "validate empty diagnostic wrong"
+  pass "validate rejects an empty file"
 }
 
-test_agy_validate_rejects_missing_status() {
+test_agy_validate_rejects_malformed_json() {
   local dir out rc
-  dir="$TMP_ROOT/validate-no-status"
+  dir="$TMP_ROOT/validate-malformed"
   mkdir -p "$dir"
-  printf '{"changed_files": []}\n' > "$dir/result.json"
-
+  printf 'not json at all\n' > "$dir/result.json"
   rc=0
-  out=$(bash -c '. "$1"; fm_agy_validate_schema "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
-  [ "$rc" -ne 0 ] || fail "validate_schema accepted result without status"
-  assert_contains "$out" "schema mismatch" "validate_schema diagnostic wrong for missing status"
-  pass "validate_schema rejects a result missing the status field"
+  out=$(bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "validate accepted malformed JSON"
+  pass "validate rejects malformed JSON"
 }
 
-test_agy_validate_rejects_missing_changed_files() {
+test_agy_validate_rejects_unknown_top_level_key() {
   local dir out rc
-  dir="$TMP_ROOT/validate-no-files"
+  dir="$TMP_ROOT/validate-unknown-key"
   mkdir -p "$dir"
-  printf '{"status": "success"}\n' > "$dir/result.json"
-
+  printf '{"status":"SUCCESS","response":"x","conversation_id":"","duration_seconds":0,"num_turns":0,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0},"surprise":true}\n' > "$dir/result.json"
   rc=0
-  out=$(bash -c '. "$1"; fm_agy_validate_schema "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
-  [ "$rc" -ne 0 ] || fail "validate_schema accepted result without changed_files"
-  assert_contains "$out" "schema mismatch" "validate_schema diagnostic wrong for missing changed_files"
-  pass "validate_schema rejects a result missing the changed_files field"
+  out=$(bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "validate accepted an unknown top-level key"
+  pass "validate rejects an unknown top-level key"
 }
 
-test_agy_validate_rejects_invalid_status() {
+test_agy_validate_rejects_unknown_usage_key() {
   local dir out rc
-  dir="$TMP_ROOT/validate-bad-status"
+  dir="$TMP_ROOT/validate-unknown-usage"
   mkdir -p "$dir"
-  printf '{"status": "partial", "changed_files": []}\n' > "$dir/result.json"
-
+  printf '{"status":"SUCCESS","response":"x","conversation_id":"","duration_seconds":0,"num_turns":0,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0,"extra":1}}\n' > "$dir/result.json"
   rc=0
-  out=$(bash -c '. "$1"; fm_agy_validate_schema "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
-  [ "$rc" -ne 0 ] || fail "validate_schema accepted invalid status value"
-  assert_contains "$out" "schema mismatch" "validate_schema diagnostic wrong for invalid status"
-  pass "validate_schema rejects an invalid status value"
+  out=$(bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "validate accepted an unknown usage key"
+  pass "validate rejects an unknown usage key"
 }
 
-test_agy_validate_rejects_changed_files_not_array() {
+test_agy_validate_rejects_wrong_type() {
   local dir out rc
-  dir="$TMP_ROOT/validate-bad-files"
+  dir="$TMP_ROOT/validate-wrong-type"
   mkdir -p "$dir"
-  printf '{"status": "success", "changed_files": "main.py"}\n' > "$dir/result.json"
-
+  printf '{"status":7,"response":"x","conversation_id":"","duration_seconds":0,"num_turns":0,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0}}\n' > "$dir/result.json"
   rc=0
-  out=$(bash -c '. "$1"; fm_agy_validate_schema "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
-  [ "$rc" -ne 0 ] || fail "validate_schema accepted changed_files as string"
-  pass "validate_schema rejects changed_files that is not an array"
+  out=$(bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "validate accepted a wrong status type"
+  pass "validate rejects a wrong type"
 }
 
-test_agy_validate_falls_back_to_grep_without_jq() {
-  local dir out rc fakebin
-  dir="$TMP_ROOT/validate-nojq"
-  fakebin=$(fm_fakebin "$TMP_ROOT/nojq-fake")
+test_agy_validate_rejects_unknown_status() {
+  local dir out rc
+  dir="$TMP_ROOT/validate-unknown-status"
   mkdir -p "$dir"
-  make_valid_result "$dir" success
-  rm -f "$fakebin/jq"
-
+  agy_result_json SUCCESS | sed 's/"SUCCESS"/"PARTIAL"/' > "$dir/result.json"
   rc=0
-  out=$(PATH="$fakebin:$BASE_PATH" bash -c '. "$1"; fm_agy_validate_schema "$2"' _ \
-    "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
-  expect_code 0 "$rc" "validate_schema without jq rejected a valid result"
-  assert_contains "$out" "validate-ok" "validate_schema without jq did not report ok"
-  pass "validate_schema falls back to grep when jq is absent"
+  out=$(bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "validate accepted an unknown status"
+  pass "validate rejects an unknown terminal status"
 }
 
-# ---- result interpretation tests ------------------------------------------
+test_agy_validate_rejects_oversized_file() {
+  local dir out rc
+  dir="$TMP_ROOT/validate-oversized"
+  mkdir -p "$dir"
+  head -c 2000000 /dev/zero | tr '\0' 'x' > "$dir/result.json"
+  rc=0
+  out=$(bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$dir/result.json" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "validate accepted an oversized file"
+  assert_contains "$out" "oversized" "validate oversized diagnostic wrong"
+  pass "validate rejects an oversized file"
+}
+
+# ---- result interpretation ------------------------------------------------
 
 test_agy_result_success_detects_status() {
   local dir
   dir="$TMP_ROOT/result-success"
   mkdir -p "$dir"
-  make_valid_result "$dir" success
-
+  agy_result_json SUCCESS > "$dir/result.json"
   bash -c '. "$1"; fm_agy_result_success "$2"' _ "$AGY_LIB" "$dir/result.json" \
-    || fail "result_success returned false for status=success"
-  pass "result_success returns true when status is success"
+    || fail "result_success returned false for SUCCESS"
+  pass "result_success returns true for status SUCCESS"
 }
 
 test_agy_result_success_rejects_error() {
   local dir
   dir="$TMP_ROOT/result-error"
   mkdir -p "$dir"
-  make_valid_result "$dir" error
-
+  agy_result_json ERROR > "$dir/result.json"
   if bash -c '. "$1"; fm_agy_result_success "$2"' _ "$AGY_LIB" "$dir/result.json"; then
-    fail "result_success returned true for status=error"
+    fail "result_success returned true for ERROR"
   fi
-  pass "result_success returns false when status is error"
+  pass "result_success returns false for status ERROR"
 }
 
-# ---- cleanup tests --------------------------------------------------------
+test_agy_denied_actions_not_success() {
+  local dir
+  dir="$TMP_ROOT/result-denied"
+  mkdir -p "$dir"
+  # status SUCCESS but a tool action was auto-denied: a real agy field that
+  # must validate, yet never count as success (the work did not happen).
+  printf '{"status":"SUCCESS","response":"","conversation_id":"","duration_seconds":0,"num_turns":0,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0},"denied_actions":[{"action":"command","display_name":"RunCommand"}]}\n' > "$dir/result.json"
+  bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$dir/result.json" >/dev/null \
+    || fail "validate rejected a real denied_actions result"
+  if bash -c '. "$1"; fm_agy_result_success "$2"' _ "$AGY_LIB" "$dir/result.json"; then
+    fail "result_success returned true when a tool action was denied"
+  fi
+  pass "denied_actions validates as a real field but never counts as success"
+}
 
-test_agy_cleanup_removes_result_dir() {
-  local dir task_id
+# ---- cleanup --------------------------------------------------------------
+
+test_agy_cleanup_removes_result_artifacts() {
+  local dir task_id f
   task_id=cleanup-test-01
   dir=$(bash -c '. "$1"; fm_agy_ensure_result_dir "$2"' _ "$AGY_LIB" "$task_id")
-  assert_present "$dir" "result dir was not created"
+  f=$(bash -c '. "$1"; fm_agy_result_file "$2" g1' _ "$AGY_LIB" "$task_id")
+  printf '{"status":"SUCCESS"}\n' > "$f"
+  assert_present "$f" "result file not created"
 
   bash -c '. "$1"; fm_agy_cleanup "$2"' _ "$AGY_LIB" "$task_id"
-  assert_absent "$dir" "result dir survived cleanup"
-  pass "cleanup removes the per-task result directory"
+  assert_absent "$f" "result file survived cleanup"
+  pass "cleanup removes the task's agy result artifacts"
 }
 
-# ---- busy regex tests -----------------------------------------------------
+# ---- liveness -------------------------------------------------------------
 
-test_agy_busy_regex_matches_expected_patterns() {
-  local out
-  # shellcheck source=/dev/null
-  . "$ROOT/bin/fm-tmux-lib.sh"
-
-  printf 'Thinking...\n' | fm_busy_lines_match agy || fail "Thinking... not busy"
-  printf 'Working...\n' | fm_busy_lines_match agy || fail "Working... not busy"
-  printf 'Analyzing...\n' | fm_busy_lines_match agy || fail "Analyzing... not busy"
-  printf 'Executing...\n' | fm_busy_lines_match agy || fail "Executing... not busy"
-  printf 'Processing...\n' | fm_busy_lines_match agy || fail "Processing... not busy"
-  printf 'Task 3/7\n' | fm_busy_lines_match agy || fail "Task N/M not busy"
-  printf 'Step 1/5\n' | fm_busy_lines_match agy || fail "Step N/M not busy"
-
-  if printf 'Idle output\n' | fm_busy_lines_match agy; then
-    fail "ordinary output was misread as busy"
-  fi
-  if printf 'esc to interrupt\n' | fm_busy_lines_match agy; then
-    fail "non-AGY busy token leaked into AGY matcher"
-  fi
-  pass "agy busy regex matches expected patterns and rejects idle output"
+test_agy_is_running() {
+  local out rc
+  rc=0
+  out=$(bash -c '
+    . "$1"
+    fm_backend_tmux_current_command() { printf "agy\n"; }
+    fm_agy_is_running t
+  ' _ "$AGY_LIB" 2>&1) || rc=$?
+  expect_code 0 "$rc" "is_running did not detect the agy process"
+  pass "is_running detects the exact agy process name"
 }
 
-test_agy_busy_regex_does_not_leak_to_other_harnesses() {
-  local out
-  # shellcheck source=/dev/null
-  . "$ROOT/bin/fm-tmux-lib.sh"
-
-  if printf 'Task 3/7\n' | fm_busy_lines_match claude; then
-    fail "AGY busy token leaked into claude matcher"
-  fi
-  if printf 'Step 1/5\n' | fm_busy_lines_match codex; then
-    fail "AGY busy token leaked into codex matcher"
-  fi
-  pass "agy busy regex is harness-scoped and does not leak"
+test_agy_is_running_not_idle_shell() {
+  local rc
+  rc=0
+  bash -c '
+    . "$1"
+    fm_backend_tmux_current_command() { printf "bash\n"; }
+    fm_agy_is_running t
+  ' _ "$AGY_LIB" 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "an idle shell was mistaken for a live agy process"
+  pass "is_running never mistakes an idle shell for agy"
 }
 
-# ---- spawn launch template tests ------------------------------------------
+# ---- harness detection ----------------------------------------------------
 
-test_agy_launch_template_is_in_spawn() {
-  assert_source_line() {
-    grep -Fq -- "$1" "$SPAWN" || fail "expected line missing from fm-spawn: $1"
-  }
-  assert_source_line \
-    "    agy) printf '%s' 'agy -p --output-format json --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__--print-timeout \${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ \"\$(__OPINPUT__ encode launch-brief < __BRIEF__)\"' ;;"
-  pass "fm-spawn: agy launch template is present and byte-pinned"
-}
-
-test_agy_model_effort_in_spawn() {
-  assert_source_line() {
-    grep -Fq -- "$1" "$SPAWN" || fail "expected line missing from fm-spawn: $1"
-  }
-  assert_source_line \
-    "    claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|cursor|gemini|muse|rovo|omp|agy)"
-  pass "fm-spawn: agy is in model_flag_for_harness"
-}
-
-test_agy_harness_detection_records_agy() {
-  local fakebin out
-  fakebin=$(fm_fakebin "$TMP_ROOT/detect-ancestry")
-  cat > "$fakebin/ps" <<'SH'
+make_fake_ps() {  # <dir> <comm-for-target-pid>
+  local dir=$1 comm=$2
+  local fakebin
+  fakebin=$(fm_fakebin "$dir")
+  cat > "$fakebin/ps" <<SH
 #!/usr/bin/env bash
 set -u
 field=
 pid=
 prev=
-for arg in "$@"; do
-  [ "$prev" = -o ] && field=$arg
-  [ "$prev" = -p ] && pid=$arg
-  prev=$arg
+for arg in "\$@"; do
+  [ "\$prev" = -o ] && field=\$arg
+  [ "\$prev" = -p ] && pid=\$arg
+  prev=\$arg
 done
-case "$field:$pid" in
-  comm=:4242) printf '/usr/local/bin/agy\n' ;;
+case "\$field:\$pid" in
+  comm=:4242) printf '$comm\n' ;;
   comm=:*) printf '/bin/bash\n' ;;
   ppid=:4242) printf '1\n' ;;
   ppid=:*) printf '4242\n' ;;
@@ -441,14 +446,26 @@ case "$field:$pid" in
 esac
 SH
   chmod +x "$fakebin/ps"
-
-  out=$(env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT \
-    PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-harness.sh")
-  [ "$out" = agy ] || fail "agy ancestry detection returned '$out'"
-  pass "fm-harness: agy is detected by process ancestry"
+  printf '%s\n' "$fakebin"
 }
 
-# ---- mock spawn test ------------------------------------------------------
+test_agy_harness_detection_exact_match() {
+  local fakebin out
+  fakebin=$(make_fake_ps "$TMP_ROOT/detect-ancestry-ok" '/usr/local/bin/agy')
+  out=$(PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-harness.sh")
+  [ "$out" = agy ] || fail "exact agy ancestry returned '$out'"
+  pass "fm-harness detects the exact agy process name"
+}
+
+test_agy_harness_detection_not_glob() {
+  local fakebin out
+  fakebin=$(make_fake_ps "$TMP_ROOT/detect-ancestry-fragment" '/usr/local/bin/magy')
+  out=$(PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-harness.sh")
+  [ "$out" != agy ] || fail "a non-agy command with the fragment was elevated to agy"
+  pass "fm-harness does not glob-match unrelated commands as agy"
+}
+
+# ---- mock spawn tests -----------------------------------------------------
 
 make_spawn_fakebin() {
   local dir=$1 fakebin
@@ -467,6 +484,14 @@ esac
 exit 0
 SH
   chmod +x "$fakebin/tmux"
+  cat > "$fakebin/agy" <<SH
+#!/usr/bin/env bash
+case "\${1:-}" in
+  --version) printf '$PINNED_VERSION\n'; exit 0 ;;
+  *) exit 0 ;;
+esac
+SH
+  chmod +x "$fakebin/agy"
   fm_fake_exit0 "$fakebin" treehouse gh-axi gh
   printf '%s\n' "$fakebin"
 }
@@ -505,77 +530,260 @@ run_agy_spawn() {
     "$SPAWN" --mode no-mistakes --yolo off "$id" "$proj" agy 2>&1
 }
 
-test_agy_spawn_succeeds() {
+test_agy_spawn_refused() {
   local rec case_dir home proj wt fakebin id out status
-  rec=$(make_spawn_case spawn-ok)
+  rec=$(make_spawn_case spawn-refused)
   IFS='|' read -r case_dir home proj wt fakebin id <<EOF
 $rec
 EOF
   out=$(run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id")
   status=$?
-  expect_code 0 "$status" "agy spawn should succeed"
-  assert_contains "$out" "spawned $id harness=agy" "agy spawn did not report success"
-  pass "fm-spawn: agy spawn reports expected output"
+  [ "$status" -ne 0 ] || fail "agy spawn should be refused, not launched: $out"
+  assert_contains "$out" "refused by normal dispatch" "agy spawn refusal diagnostic wrong"
+  pass "fm-spawn: agy is refused by normal dispatch even on tmux with a matching version"
 }
 
-test_agy_spawn_records_meta() {
-  local rec case_dir home proj wt fakebin id out status meta
-  rec=$(make_spawn_case spawn-meta)
+test_agy_spawn_refused_creates_no_meta() {
+  local rec case_dir home proj wt fakebin id out meta
+  rec=$(make_spawn_case spawn-refused-meta)
   IFS='|' read -r case_dir home proj wt fakebin id <<EOF
 $rec
 EOF
   out=$(run_agy_spawn "$home" "$proj" "$wt" "$fakebin" "$id")
   meta="$home/state/$id.meta"
-  assert_present "$meta" "meta file was not created for agy spawn"
-  assert_grep 'harness=agy' "$meta" "meta did not record harness=agy"
-  pass "fm-spawn: agy spawn records harness=agy in meta"
+  assert_absent "$meta" "a refused agy spawn still created a meta file"
+  pass "fm-spawn: a refused agy spawn creates no meta file"
 }
 
-# ---- existing launch templates byte-pinned test ---------------------------
-
-test_existing_launch_templates_stay_byte_pinned() {
-  assert_source_line() {
-    grep -Fqx -- "$1" "$SPAWN" || fail "existing launch template changed: $1"
-  }
-  assert_source_line "    claude) printf '%s' 'CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings '\\''{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false}}'\\'' __MODELFLAG____EFFORTFLAG__\"\$(__OPINPUT__ encode launch-brief < __BRIEF__)\"' ;;"
-  assert_source_line "        printf '%s' 'codex __MODELFLAG____EFFORTFLAG__--dangerously-bypass-approvals-and-sandbox \"\$(__OPINPUT__ encode launch-brief < __BRIEF__)\"'"
-  assert_source_line "        printf '%s' 'codex __MODELFLAG____EFFORTFLAG__--dangerously-bypass-approvals-and-sandbox -c \"notify=[\\\"bash\\\",\\\"-c\\\",\\\"touch __TURNEND__\\\"]\" \"\$(__OPINPUT__ encode launch-brief < __BRIEF__)\"'"
-  assert_source_line "    opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\\''{\"permission\":{\"*\":\"allow\"}}'\\'' opencode __MODELFLAG__--prompt \"\$(__OPINPUT__ encode launch-brief < __BRIEF__)\"' ;;"
-  assert_source_line "        printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PITURNEND__ -e __PIWATCH__ \"\$(__OPINPUT__ encode launch-brief < __BRIEF__)\"'"
-  assert_source_line "        printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PIEXT__ \"\$(__OPINPUT__ encode launch-brief < __BRIEF__)\"'"
-  assert_source_line "    grok) printf '%s' 'grok --always-approve __MODELFLAG____EFFORTFLAG__\"\$(__OPINPUT__ encode launch-brief < __BRIEF__)\"' ;;"
-  pass "fm-spawn: the five pre-existing adapters' launch templates stay byte-pinned"
+test_agy_spawn_refused_via_config() {
+  local rec case_dir home proj wt fakebin id out status
+  rec=$(make_spawn_case spawn-config-refused)
+  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+  printf 'agy\n' > "$home/config/crew-harness"
+  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
+    PATH="$fakebin:$BASE_PATH" \
+    "$SPAWN" --mode no-mistakes --yolo off "$id" "$proj" 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "config/crew-harness=agy spawn should be refused"
+  assert_contains "$out" "refused by normal dispatch" "agy config refusal diagnostic wrong"
+  pass "fm-spawn: config/crew-harness=agy is refused"
 }
 
+test_agy_spawn_rejects_secondmate() {
+  local rec case_dir home proj wt fakebin id out status
+  rec=$(make_spawn_case spawn-secondmate)
+  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
+    PATH="$fakebin:$BASE_PATH" \
+    "$SPAWN" --secondmate "$id" "$home" agy 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "agy secondmate spawn should be refused"
+  assert_contains "$out" "refused by normal dispatch" "agy secondmate refusal diagnostic wrong"
+  pass "fm-spawn: agy secondmate is refused"
+}
 
+test_agy_spawn_refused_on_herdr() {
+  local rec case_dir home proj wt fakebin id out status
+  rec=$(make_spawn_case spawn-refused-herdr)
+  IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" \
+    PATH="$fakebin:$BASE_PATH" \
+    "$SPAWN" --mode no-mistakes --yolo off --backend herdr "$id" "$proj" agy 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "agy spawn on herdr should be refused, not launched: $out"
+  assert_contains "$out" "refused by normal dispatch" "agy herdr refusal diagnostic wrong"
+  pass "fm-spawn: agy is refused on the herdr backend before endpoint creation"
+}
 
+# The raw launch escape hatch derives the harness from the first command word,
+# so a command that wraps agy behind a launcher (env/command/nohup/sh -c) hid it
+# from the first-word refusal and reached the launch path. This drives the real
+# fm-spawn.sh for each wrapper and asserts the refusal fires before any endpoint.
+# Case variants are covered because the executable lookup is case-insensitive on
+# the target platform, so `AGY` resolves to the same binary.
+test_agy_spawn_refused_wrapped_raw_command() {
+  local raw rec case_dir home proj wt fakebin id out status idx=0 failures=''
+  for raw in 'env FOO=bar agy -p hello' 'command agy -p hello' 'nohup agy -p hello' "sh -c 'agy -p hello'" 'AGY -p hello' 'env FOO=bar AGY -p hello'; do
+    idx=$((idx + 1))
+    rec=$(make_spawn_case "spawn-raw-wrapped-$idx")
+    IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+    out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" \
+      FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+      FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+      FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
+      FM_AGY_PRINT_TIMEOUT=600 \
+      PATH="$fakebin:$BASE_PATH" \
+      "$SPAWN" --mode no-mistakes --yolo off "$id" "$proj" "$raw" 2>&1)
+    status=$?
+    if [ "$status" -eq 0 ] || ! printf '%s' "$out" | grep -q 'refused by normal dispatch'; then
+      failures="$failures
+raw='$raw' status=$status: $out"
+    fi
+    if [ -e "$home/state/$id.meta" ]; then
+      failures="$failures
+raw='$raw' created $home/state/$id.meta"
+    fi
+  done
+  [ -z "$failures" ] || fail "a wrapped raw launch command bypassed the agy refusal:$failures"
+  pass "fm-spawn: a raw command wrapping agy behind env/command/nohup/sh, or spelling it in another case, is refused"
+}
+
+# A raw command can also resolve to agy through shell grouping or expansion
+# rather than a literal word: a subshell `(agy ...)`, an assignment plus `$A`,
+# a parameter expansion `${AGY:-agy}`, or a command substitution
+# `$(printf agy)`. Those operators fuse agy to their syntax, so the refusal
+# normalizes shell metacharacters into word boundaries before scanning and
+# rejects the command before any endpoint is created.
+test_agy_spawn_refused_expansion_raw_command() {
+  local raw rec case_dir home proj wt fakebin id out status idx=0 failures=''
+  # shellcheck disable=SC2016 # These raw commands are literal fm-spawn input; they must not expand here.
+  for raw in '(agy -p hello)' 'A=agy; $A -p hello' 'A=agy; env $A -p hello' '${AGY:-agy} -p hello' 'sh -c "$(printf agy) -p hello"' 'AGYBIN=agy; exec $AGYBIN -p hello'; do
+    idx=$((idx + 1))
+    rec=$(make_spawn_case "spawn-raw-expand-$idx")
+    IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+    out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" \
+      FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+      FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+      FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
+      FM_AGY_PRINT_TIMEOUT=600 \
+      PATH="$fakebin:$BASE_PATH" \
+      "$SPAWN" --mode no-mistakes --yolo off "$id" "$proj" "$raw" 2>&1)
+    status=$?
+    if [ "$status" -eq 0 ] || ! printf '%s' "$out" | grep -q 'refused by normal dispatch'; then
+      failures="$failures
+raw='$raw' status=$status: $out"
+    fi
+    if [ -e "$home/state/$id.meta" ]; then
+      failures="$failures
+raw='$raw' created $home/state/$id.meta"
+    fi
+  done
+  [ -z "$failures" ] || fail "an expanded raw launch command bypassed the agy refusal:$failures"
+  pass "fm-spawn: a raw command that resolves to agy through grouping or expansion is refused"
+}
+
+# A token can also be assembled from adjacent quoted or escaped fragments
+# (`a"g"y`, `a'g'y`, `a\gy`) or a command substitution carrying a literal agy
+# (`$(printf 'a''g''y')`). The guard strips quote and escape characters before
+# normalizing word boundaries, so those statically detectable spellings are
+# refused like the literal word. A name computed from characters that never
+# appear contiguously (`$'a\x67y'`, `a$(printf g)y`) cannot be resolved by a
+# static scan and is outside the documented guarantee.
+test_agy_spawn_refused_quoted_raw_command() {
+  local raw rec case_dir home proj wt fakebin id out status idx=0 failures=''
+  for raw in 'a"g"y -p hello' "a'g'y -p hello" 'a\gy -p hello' "\$(printf 'a''g''y') -p hello"; do
+    idx=$((idx + 1))
+    rec=$(make_spawn_case "spawn-raw-quoted-$idx")
+    IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+    out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" \
+      FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+      FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+      FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
+      FM_AGY_PRINT_TIMEOUT=600 \
+      PATH="$fakebin:$BASE_PATH" \
+      "$SPAWN" --mode no-mistakes --yolo off "$id" "$proj" "$raw" 2>&1)
+    status=$?
+    if [ "$status" -eq 0 ] || ! printf '%s' "$out" | grep -q 'refused by normal dispatch'; then
+      failures="$failures
+raw='$raw' status=$status: $out"
+    fi
+    if [ -e "$home/state/$id.meta" ]; then
+      failures="$failures
+raw='$raw' created $home/state/$id.meta"
+    fi
+  done
+  [ -z "$failures" ] || fail "a quoted/escaped raw launch command bypassed the agy refusal:$failures"
+  pass "fm-spawn: a raw command assembling agy from quoted or escaped fragments is refused"
+}
+
+test_agy_control_refused() {
+  if bash -c '. "$1"; fm_control_harness_supported agy' _ "$CONTROL_LIB" 2>/dev/null; then
+    fail "agy control was reported harness-supported"
+  fi
+  if bash -c '. "$1"; fm_control_harness_family agy' _ "$CONTROL_LIB" 2>/dev/null; then
+    fail "agy was mapped to a control family"
+  fi
+  pass "agy control verbs are refused (no control family, not harness-supported)"
+}
+
+test_agy_stale_generation_rejected() {
+  local task_id dir stale cur rc
+  task_id="stale-gen-test-$$"
+  dir=$(bash -c '. "$1"; fm_agy_ensure_result_dir "$2"' _ "$AGY_LIB" "$task_id")
+  stale=$(bash -c '. "$1"; fm_agy_result_file "$2" gen-old' _ "$AGY_LIB" "$task_id")
+  cur=$(bash -c '. "$1"; fm_agy_result_file "$2" gen-new' _ "$AGY_LIB" "$task_id")
+  [ "$stale" != "$cur" ] || fail "stale and current generation share a result path"
+  agy_result_json SUCCESS > "$stale"
+  agy_result_json SUCCESS > "$cur"
+  rc=0
+  bash -c '. "$1"; fm_agy_validate_result "$2"' _ "$AGY_LIB" "$cur" 2>/dev/null || rc=$?
+  expect_code 0 "$rc" "the current generation's valid artifact was rejected"
+  bash -c '. "$1"; fm_agy_cleanup "$2"' _ "$AGY_LIB" "$task_id"
+  assert_absent "$stale" "stale artifact survived cleanup"
+  assert_absent "$cur" "current artifact survived cleanup"
+  rmdir "$dir" 2>/dev/null || true
+  pass "generation-bound paths keep a stale artifact out of the current result, and cleanup retires both"
+}
+
+test_agy_harness_detection_exact_match
+test_agy_harness_detection_not_glob
 test_agy_detect_finds_installed_binary
 test_agy_detect_reports_not_found
+test_agy_version_pinned_accepts_match
+test_agy_version_pinned_rejects_mismatch
 test_agy_auth_status_ok
 test_agy_auth_status_failed
-test_agy_launch_cmd_shape
-test_agy_launch_cmd_includes_model
-test_agy_launch_cmd_includes_effort
-test_agy_launch_cmd_omits_unsupported_effort
-test_agy_collect_output_multiline_json
-test_agy_collect_output_singleline_json
-test_agy_validate_accepts_valid_result
-test_agy_validate_accepts_error_result
+test_agy_result_file_binds_generation
+test_agy_result_file_refuses_unsafe_task_id
+test_agy_launch_template_contract
+test_agy_env_scrub_removes_secrets_preserves_others
+test_agy_publish_result_atomic
+test_agy_publish_result_rejects_empty
+test_agy_publish_result_rejects_oversized
+test_agy_validate_accepts_success
+test_agy_validate_accepts_error
 test_agy_validate_rejects_missing_file
-test_agy_validate_rejects_empty_file
-test_agy_validate_rejects_missing_status
-test_agy_validate_rejects_missing_changed_files
-test_agy_validate_rejects_invalid_status
-test_agy_validate_rejects_changed_files_not_array
-test_agy_validate_falls_back_to_grep_without_jq
+test_agy_validate_rejects_empty
+test_agy_validate_rejects_malformed_json
+test_agy_validate_rejects_unknown_top_level_key
+test_agy_validate_rejects_unknown_usage_key
+test_agy_validate_rejects_wrong_type
+test_agy_validate_rejects_unknown_status
+test_agy_validate_rejects_oversized_file
 test_agy_result_success_detects_status
 test_agy_result_success_rejects_error
-test_agy_cleanup_removes_result_dir
-test_agy_busy_regex_matches_expected_patterns
-test_agy_busy_regex_does_not_leak_to_other_harnesses
-test_agy_launch_template_is_in_spawn
-test_agy_model_effort_in_spawn
-test_agy_harness_detection_records_agy
-test_agy_spawn_succeeds
-test_agy_spawn_records_meta
-test_existing_launch_templates_stay_byte_pinned
+test_agy_denied_actions_not_success
+test_agy_cleanup_removes_result_artifacts
+test_agy_is_running
+test_agy_is_running_not_idle_shell
+test_agy_control_refused
+test_agy_stale_generation_rejected
+test_agy_spawn_refused
+test_agy_spawn_refused_creates_no_meta
+test_agy_spawn_refused_via_config
+test_agy_spawn_rejects_secondmate
+test_agy_spawn_refused_on_herdr
+test_agy_spawn_refused_wrapped_raw_command
+test_agy_spawn_refused_expansion_raw_command
+test_agy_spawn_refused_quoted_raw_command

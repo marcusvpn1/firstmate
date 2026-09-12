@@ -1,47 +1,73 @@
 #!/usr/bin/env bash
 # bin/fm-agy-lib.sh - AGY headless-crewmate adapter contract.
 #
-# AGY is an EXPERIMENTAL harness for Firstmate crewmates.
-# Unlike the interactive TUI harnesses (claude, codex, opencode, pi, grok,
-# kimi), AGY runs headless: a single `agy -p` invocation processes the brief,
-# performs tool work inside the task worktree, writes structured JSON to stdout,
-# and exits.
+# AGY is an EXPERIMENTAL, unverified Firstmate crewmate harness. It is not in
+# the verified adapter list (AGENTS.md section 4, bin/fm-control-lib.sh,
+# bin/fm-quota-choose.sh) and is REFUSED by normal dispatch everywhere:
+# bin/fm-spawn.sh refuses every agy dispatch (explicit, config/crew-harness,
+# secondmate, and every statically detectable spelling of the raw launch escape
+# hatch), so no production path reaches
+# this library. The only sanctioned way to exercise agy is the opt-in live
+# guard (tests/fm-agy-live-e2e.test.sh, FM_AGY_LIVE=1), which invokes the binary
+# directly under the PG4 ambient-secret scrub and validates its result through
+# the functions below. There is
+# deliberately no production watcher/collection consumer: the publication,
+# validation, liveness, and cleanup helpers are exercised only by that guard
+# and the portable test suite.
 #
-# Because agy is headless, this adapter does not participate in composer
-# classification, turn-end hooks, or interactive-steer loops.
-# Instead it owns a detection / launch / observe / collect / cleanup contract.
+# Agy runs headless: a single `agy --output-format json ... -p="<brief>"`
+# invocation processes the brief, performs tool work inside the task worktree,
+# writes one JSON result object to stdout, and exits. There is no interactive
+# TUI, no turn-end hook, and no data-plane steering.
 #
-# Key design decisions:
-# - AGY is always launched inside a PTY (tmux pane) so it sees a TTY.
-#   Piped stdout is explicitly NOT the protocol.
-# - Exit code 0 is NOT treated as success.
-#   Completion is proven only by a valid result.json artifact.
-# - The result schema is strict and reject-unknown.
-# - Transient AGY tokens and auth state stay in memory; they are never persisted
-#   or logged.
-# - Graceful cancellation (Ctrl-C) tries SIGINT first, then SIGTERM, then
-#   SIGKILL after a bounded wait.
+# Contract (observed against agy 1.2.1, 2026-09-11):
+# - Kind: none by normal dispatch (refused for every kind); the live guard
+#   exercises a one-shot print run only.
+# - Backend: normal dispatch refuses every backend (tmux included) before
+#   creating an endpoint (see bin/fm-spawn.sh); the live guard runs agy as a
+#   direct subprocess, not through a runtime backend.
+# - One-shot: completion is proven only by a validated result artifact, never
+#   by exit code alone and never by rendered spinner text.
+# - Result publication: bounded, atomic, task-owned, and generation-bound
+#   (fm_agy_publish_result / fm_agy_result_file); exercised by the live guard
+#   and the portable test suite, never by a production dispatch.
+# - Version: exact pin (FM_AGY_PINNED_VERSION, default 1.2.1). The live guard
+#   refuses a mismatch; it is never a warning.
+# - Environment scrub: the launch template unsets the named ambient secrets
+#   (STITCH_X_GOOG_API_KEY, STITCH_API_KEY, ANTHROPIC_API_KEY, APIFY_API_KEY,
+#   HF_TOKEN) and every other *_API_KEY / *_TOKEN / *_SECRET var in the pane
+#   shell before agy runs, so agy's MCP children never inherit ambient
+#   credentials (the live guard applies the same scrub in its launch subshell).
+#   The operator's own shell (and the Stitch MCP server it feeds)
+#   is untouched: the unset happens only in the pane shell.
 #
-# Experimental status: single-worker only, no secondmate support, and model
-# discovery is not integrated with quota-axi.
-# Pinned version requirement: the adapter was verified against agy 1.1.8.
-# A version mismatch warns but does not refuse launch.
-# Known risk: agy --print may behave differently without a TTY; the PTY-backed
-# runner is the mitigation.
-# Promotion criteria: validate with real agy end-to-end, add quota-axi
-# integration, verify secondmate support, and confirm no version-specific
-# output-format drift before graduating from experimental.
-#
-# Result schema (strict, reject-unknown):
-# {
-#   "status": "success" | "error" | "cancelled",
-#   "changed_files": ["relative/path", ...],
-#   "exit_code": 0,
-#   "error": null,
-#   "summary": "What was done",
-#   "duration_ms": 12345
-# }
+# Result schema (the real `--output-format json` object, observed 1.2.1):
+#   {
+#     "conversation_id": string,          # "" before a conversation starts
+#     "status": "SUCCESS" | "ERROR",      # uppercase terminal status
+#     "response": string,                 # model text ("" on error)
+#     "error": string,                    # present only on error
+#     "denied_actions": [ {..}, .. ],     # present when a tool action is auto-denied
+#     "duration_seconds": number,
+#     "num_turns": number,
+#     "usage": { "input_tokens": number, "output_tokens": number,
+#                "thinking_tokens": number, "cache_read_tokens": number,
+#                "total_tokens": number }
+#   }
+# A `status` of SUCCESS with a non-empty `denied_actions` is a FAILED task: the
+# conversation completed but a required tool action was denied, so the work did
+# not happen. Success therefore requires SUCCESS and no denied actions.
+# Validation is strict: malformed JSON, unknown top-level keys, unknown usage
+# keys, wrong types, a missing terminal status, or an oversized artifact all
+# fail closed. jq is a hard dependency for validation and interpretation; its
+# absence fails explicitly rather than degrading to a weak grep.
 set -u
+
+# The exact version this adapter was verified against. Override only with a
+# version that has been verified end to end; a different value refuses launch.
+FM_AGY_PINNED_VERSION=${FM_AGY_PINNED_VERSION:-1.2.1}
+# Hard cap on the published result artifact, in bytes.
+FM_AGY_RESULT_MAX_BYTES=${FM_AGY_RESULT_MAX_BYTES:-1048576}
 
 # ---- detect ---------------------------------------------------------------
 
@@ -64,20 +90,26 @@ fm_agy_version() {
   agy --version 2>/dev/null || true
 }
 
+# Exact-version enforcement: return 0 only when the installed version equals the
+# pinned version. A mismatch prints a diagnostic and returns 1 so callers refuse
+# launch. The prior "warn but continue" behavior is gone: an unverified version
+# must not be launched.
 fm_agy_version_pinned() {
-  local pinned=${FM_AGY_PINNED_VERSION:-1.1.8}
-  local current
+  local pinned=${FM_AGY_PINNED_VERSION:-1.2.1} current
   current=$(fm_agy_version)
-  [ "$current" = "$pinned" ] && return 0
-  printf 'warning: agy version %s (pinned %s); adapter may behave differently\n' \
-    "$current" "$pinned" >&2
-  return 0
+  if [ "$current" = "$pinned" ]; then
+    printf 'agy: version-ok %s\n' "$current"
+    return 0
+  fi
+  printf 'agy: version-mismatch: installed %s, pinned %s; refusing launch\n' \
+    "${current:-unknown}" "$pinned" >&2
+  return 1
 }
 
 fm_agy_auth_status() {
-  local out rc
+  local out rc=0
   out=$(agy models 2>&1) || rc=$?
-  if [ "${rc:-0}" -ne 0 ]; then
+  if [ "$rc" -ne 0 ]; then
     printf 'agy: auth-unverified\n'
     return 1
   fi
@@ -88,259 +120,227 @@ fm_agy_auth_status() {
   printf 'agy: auth-ok\n'
 }
 
-# ---- launch ---------------------------------------------------------------
+# ---- task-owned, generation-bound artifact paths --------------------------
 
-fm_agy_result_dir() {
+# The artifact directory is task-owned (/tmp/fm-<task-id>), matching the spawn
+# path's TASK_TMP. It is never a shared or predictable cross-task path.
+fm_agy_result_dir() {  # <task_id>
   local task_id=$1
+  case "$task_id" in
+    ''|*/*|*'..'*) return 1 ;;
+  esac
   printf '/tmp/fm-%s' "$task_id"
 }
 
-fm_agy_result_file() {
-  local task_id=$1
-  printf '%s/result.json' "$(fm_agy_result_dir "$task_id")"
+# The result artifact is bound to task id AND spawn generation: a stale
+# artifact from a previous generation lives at a different path and is never
+# read as this generation's result.
+fm_agy_result_file() {  # <task_id> <spawn_gen>
+  local task_id=$1 spawn_gen=$2 dir
+  case "$spawn_gen" in
+    ''|*/*|*[!A-Za-z0-9._-]*) return 1 ;;
+  esac
+  dir=$(fm_agy_result_dir "$task_id") || return 1
+  printf '%s/result-%s.json' "$dir" "$spawn_gen"
 }
 
-fm_agy_log_file() {
-  local task_id=$1
-  printf '%s/agy.log' "$(fm_agy_result_dir "$task_id")"
+fm_agy_log_file() {  # <task_id> <spawn_gen>
+  local task_id=$1 spawn_gen=$2 dir
+  case "$spawn_gen" in
+    ''|*/*|*[!A-Za-z0-9._-]*) return 1 ;;
+  esac
+  dir=$(fm_agy_result_dir "$task_id") || return 1
+  printf '%s/agy-%s.log' "$dir" "$spawn_gen"
 }
 
-fm_agy_ensure_result_dir() {
+fm_agy_ensure_result_dir() {  # <task_id>
   local task_id=$1 dir
-  dir=$(fm_agy_result_dir "$task_id")
+  dir=$(fm_agy_result_dir "$task_id") || return 1
   mkdir -p "$dir"
   printf '%s\n' "$dir"
 }
 
-fm_agy_model_flag() {
-  local model=$1
-  [ -n "$model" ] && [ "$model" != default ] || return 0
-  printf -- '--model %s ' "$model"
+# ---- launch ---------------------------------------------------------------
+
+# The model/effort vocabulary for agy is owned by model_flag_for_harness /
+# effort_flag_for_harness in bin/fm-spawn.sh (--model passthrough, --effort
+# low|medium|high); the lib deliberately holds no parallel copy that could
+# drift from the flags a launch would actually use.
+
+# The launch template is the documented reference shape for a one-shot agy run
+# (exercised by the portable template-contract test, not by normal dispatch:
+# agy is refused before it can reach a launch). The prompt is attached to -p
+# with `=` so the flag does NOT swallow the next flag as its prompt (the
+# "dashline" bug), and stdout is redirected through a per-generation temp file
+# that is atomically renamed on completion. The template deliberately does NOT
+# end in `exit $rc`: an `exit` would destroy the pane shell and turn a finished
+# task's endpoint `missing` rather than `dead`, breaking relaunch. Completion
+# is proven only by the validated result artifact, never by the shell exit
+# status.
+#
+# Placeholders (resolved only by a test harness, never by fm-spawn.sh):
+#   __MODELFLAG__   model flag (empty when default)
+#   __EFFORTFLAG__  effort flag (empty when default)
+#   __AGYLOGFILE__  per-generation log file path
+#   __AGYRESULT__   per-generation result file path
+#   __OPINPUT__     fm-operational-input.sh path
+#   __BRIEF__       brief file path
+# Emit the environment-scrub prefix that runs in the pane shell before agy. It
+# unsets the named ambient secrets plus every other *_API_KEY / *_TOKEN /
+# *_SECRET var, so agy and its MCP children never inherit ambient credentials.
+# The unset runs only in the pane shell that launches agy; the operator's own
+# environment (which feeds the Stitch MCP server) is left untouched.
+fm_agy_env_scrub_code() {
+  # shellcheck disable=SC2016 # emitted literally: expands in the pane shell
+  printf '%s' 'unset STITCH_X_GOOG_API_KEY STITCH_API_KEY ANTHROPIC_API_KEY APIFY_API_KEY HF_TOKEN 2>/dev/null; for _fm_agy_k in $(env | awk -F= "\$1 ~ /_API_KEY\$|_TOKEN\$|_SECRET\$/ {print \$1}"); do unset "$_fm_agy_k" 2>/dev/null; done; '
 }
 
-fm_agy_effort_flag() {
-  local effort=$1
-  [ -n "$effort" ] && [ "$effort" != default ] || return 0
-  case "$effort" in
-    low|medium|high) printf -- '--effort %s ' "$effort" ;;
-  esac
+fm_agy_launch_template() {
+  # shellcheck disable=SC2016 # template literal: placeholders expand in the pane
+  printf '%s%s' "$(fm_agy_env_scrub_code)" 'agy --output-format json --dangerously-skip-permissions --add-dir __WORKTREE__ __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ -p="$(__OPINPUT__ encode launch-brief < __BRIEF__)" > __AGYRESULT__.tmp; mv -f __AGYRESULT__.tmp __AGYRESULT__; chmod 600 __AGYRESULT__ 2>/dev/null'
 }
 
-# Build the AGY headless launch command.
-# The command runs inside a PTY (tmux pane), never piped.
-# Output goes to the pane naturally; the watcher captures it after exit.
-fm_agy_launch_cmd() {
-  local brief_file=$1 result_file=$2 log_file=$3 model=${4:-} effort=${5:-}
-  local cmd model_flag effort_flag
+# ---- result publication ---------------------------------------------------
 
-  model_flag=$(fm_agy_model_flag "$model")
-  effort_flag=$(fm_agy_effort_flag "$effort")
-
-  cmd='agy -p --output-format json --dangerously-skip-permissions'
-  cmd="$cmd --print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s"
-  cmd="$cmd --log-file $log_file"
-  cmd="$cmd $model_flag"
-  cmd="$cmd $effort_flag"
-  cmd="$cmd \"\$(cat $brief_file)\""
-  printf '%s' "$cmd"
-}
-
-# ---- observe --------------------------------------------------------------
-
-# fm_agy_is_running: return 0 if an agy process is alive in the target pane.
-fm_agy_is_running() {
-  local target=$1
-  fm_backend_tmux_current_command "$target" 2>/dev/null | grep -q 'agy' 2>/dev/null
-}
-
-# fm_agy_wait_for_completion: poll until agy exits.
-# Returns 0 when agy is no longer running, 1 on timeout.
-fm_agy_wait_for_completion() {
-  local target=$1 timeout=${2:-600} i=0
-  while [ "$i" -lt "$timeout" ]; do
-    if ! fm_agy_is_running "$target"; then
-      return 0
-    fi
-    sleep 1
-    i=$((i + 1))
-  done
-  return 1
-}
-
-# ---- collect --------------------------------------------------------------
-
-# fm_agy_collect_output: capture the pane and extract JSON result.
-# The pane may contain shell prompts and other noise;
-# this extracts the last complete JSON object.
-fm_agy_collect_output() {
-  local target=$1 result_file=$2
-  local capture json_start json_body rc
-
-  capture=$(fm_backend_tmux_capture "$target" 2000 "fm-agy-collect" 2>/dev/null || true)
-  if [ -z "$capture" ]; then
-    printf 'collect-error: empty capture\n'
-    return 1
-  fi
-
-  json_start=$(printf '%s\n' "$capture" | grep -n '^{' | tail -1 | cut -d: -f1 || true)
-  if [ -z "$json_start" ]; then
-    printf 'collect-error: no JSON object found in capture\n'
-    return 1
-  fi
-
-  json_body=$(printf '%s\n' "$capture" | tail -n +"$json_start" | awk '
-    {
-      line = $0
-      n = length(line)
-      out = ""
-      for (i = 1; i <= n; i++) {
-        c = substr(line, i, 1)
-        out = out c
-        if (esc) { esc = 0; continue }
-        if (in_str) {
-          if (c == "\\") { esc = 1 }
-          else if (c == "\"") { in_str = 0 }
-          continue
-        }
-        if (c == "\"") { in_str = 1; continue }
-        if (c == "{") { depth++ }
-        else if (c == "}") {
-          depth--
-          if (depth == 0) {
-            print out
-            found = 1
-            exit
-          }
-        }
-      }
-      print out
-    }
-    END { if (!found) exit 1 }
-  ')
-  rc=$?
-  if [ "$rc" -ne 0 ]; then
-    printf 'collect-error: no closing brace found in capture\n'
-    return 1
-  fi
-
-  printf '%s\n' "$json_body" > "$result_file" 2>/dev/null || {
-    printf 'collect-error: could not write result file\n'
+# Atomically publish a bounded raw result string to <result_file>. The write
+# goes to a private-mode temp file first and is renamed into place, so a reader
+# never observes a partial artifact. Empty and oversized inputs fail closed.
+fm_agy_publish_result() {  # <result_file> <raw_json>
+  local result_file=$1 raw=$2 tmp
+  [ -n "$raw" ] || { printf 'publish-error: empty result\n'; return 1; }
+  [ "${#raw}" -le "${FM_AGY_RESULT_MAX_BYTES:-1048576}" ] || {
+    printf 'publish-error: oversized result (%s bytes > %s)\n' \
+      "${#raw}" "${FM_AGY_RESULT_MAX_BYTES:-1048576}"
     return 1
   }
-  printf 'collect-ok: %s\n' "$result_file"
+  tmp="${result_file}.tmp.$$"
+  if ! ( umask 077; printf '%s\n' "$raw" > "$tmp" ) 2>/dev/null; then
+    printf 'publish-error: write failed\n'
+    return 1
+  fi
+  chmod 600 "$tmp" 2>/dev/null || true
+  if ! mv -f "$tmp" "$result_file" 2>/dev/null; then
+    printf 'publish-error: atomic replace failed\n'
+    rm -f "$tmp" 2>/dev/null || true
+    return 1
+  fi
+  printf 'publish-ok: %s\n' "$result_file"
 }
 
-# ---- validate -------------------------------------------------------------
+# ---- validation -----------------------------------------------------------
 
-# fm_agy_validate_schema: validate result.json against the strict schema.
-# Uses jq if available, falls back to grep-based structural checks.
-fm_agy_validate_schema() {
-  local result_file=$1
+# fm_agy_validate_result: strict validation against the observed 1.2.1 schema.
+# Rejects a missing/empty/oversized file, malformed JSON, unknown top-level or
+# usage keys, wrong types, and an unknown terminal status. jq is required; its
+# absence fails explicitly rather than silently accepting.
+fm_agy_validate_result() {  # <result_file>
+  local result_file=$1 size out
 
   [ -f "$result_file" ] || {
     printf 'validate-error: result file not found: %s\n' "$result_file"
     return 1
   }
-
   [ -s "$result_file" ] || {
     printf 'validate-error: result file is empty\n'
     return 1
   }
-
-  if command -v jq >/dev/null 2>&1; then
-    fm_agy_validate_jq "$result_file" || return 1
-  else
-    fm_agy_validate_grep "$result_file" || return 1
-  fi
-
-  printf 'validate-ok\n'
-  return 0
-}
-
-fm_agy_validate_jq() {
-  local result_file=$1
-  local out
+  size=$(wc -c < "$result_file" 2>/dev/null | tr -d ' ')
+  case "$size" in
+    ''|*[!0-9]*) size=0 ;;
+  esac
+  [ "$size" -le "${FM_AGY_RESULT_MAX_BYTES:-1048576}" ] || {
+    printf 'validate-error: result file oversized (%s bytes)\n' "$size"
+    return 1
+  }
+  command -v jq >/dev/null 2>&1 || {
+    printf 'validate-error: jq required for agy result validation\n'
+    return 1
+  }
 
   out=$(jq -e '
+    def allowed: ["conversation_id","status","response","error","denied_actions","duration_seconds","num_turns","usage"];
+    def usage_allowed: ["input_tokens","output_tokens","thinking_tokens","cache_read_tokens","total_tokens"];
     type == "object"
-    and has("status")
+    and (all(keys_unsorted[]; . as $k | allowed | index($k) != null))
+    and (has("conversation_id") and has("status") and has("response")
+         and has("duration_seconds") and has("num_turns") and has("usage"))
     and (.status | type == "string")
-    and (.status | IN("success", "error", "cancelled"))
-    and has("changed_files")
-    and (.changed_files | type == "array")
-    and (if has("exit_code") then (.exit_code | type == "number") else true end)
-    and (if has("error") then (.error | type == "string" or .error == null) else true end)
-    and (if has("summary") then (.summary | type == "string") else true end)
-    and (if has("duration_ms") then (.duration_ms | type == "number") else true end)
+    and (.status == "SUCCESS" or .status == "ERROR")
+    and (.conversation_id | type == "string")
+    and (.response | type == "string")
+    and (.duration_seconds | type == "number")
+    and (.num_turns | type == "number")
+    and (if has("error") then (.error | type == "string") else true end)
+    and (if has("denied_actions") then (.denied_actions | type == "array") else true end)
+    and (.usage | type == "object")
+    and (all(.usage | keys_unsorted[]; . as $k | usage_allowed | index($k) != null))
+    and (.usage.input_tokens | type == "number")
+    and (.usage.output_tokens | type == "number")
+    and (.usage.thinking_tokens | type == "number")
+    and (.usage.cache_read_tokens | type == "number")
+    and (.usage.total_tokens | type == "number")
   ' "$result_file" 2>&1) || {
     printf 'validate-error: schema mismatch: %s\n' "$out"
     return 1
   }
 
   case "$out" in
-    true) return 0 ;;
-    *)
-      printf 'validate-error: schema rejected (got %s)\n' "$out"
-      return 1
-      ;;
+    true) printf 'validate-ok\n'; return 0 ;;
+    *) printf 'validate-error: schema rejected\n'; return 1 ;;
   esac
-}
-
-fm_agy_validate_grep() {
-  local result_file=$1
-  local status
-
-  grep -q '"status"' "$result_file" || {
-    printf 'validate-error: missing status field\n'
-    return 1
-  }
-  grep -q '"changed_files"' "$result_file" || {
-    printf 'validate-error: missing changed_files field\n'
-    return 1
-  }
-  return 0
 }
 
 # ---- result interpretation ------------------------------------------------
 
-fm_agy_result_success() {
-  local result_file=$1
-  local status
+# Success means the validated artifact carries status "SUCCESS". jq is a hard
+# dependency here, and its absence fails explicitly rather than reporting a
+# silent false. Callers must validate first; this only interprets.
+fm_agy_result_success() {  # <result_file>
+  local result_file=$1 status denied
+  command -v jq >/dev/null 2>&1 || {
+    printf 'interpret-error: jq required for agy result interpretation\n' >&2
+    return 1
+  }
   status=$(jq -r '.status // empty' "$result_file" 2>/dev/null || true)
-  [ "$status" = success ]
+  [ "$status" = SUCCESS ] || return 1
+  denied=$(jq -r '(.denied_actions | length) // 0' "$result_file" 2>/dev/null || true)
+  [ "$denied" = 0 ]
 }
 
-fm_agy_result_status() {
+fm_agy_result_status() {  # <result_file>
   local result_file=$1
+  command -v jq >/dev/null 2>&1 || { printf 'unknown\n'; return 0; }
   jq -r '.status // "unknown"' "$result_file" 2>/dev/null || printf 'unknown\n'
 }
 
-fm_agy_result_summary() {
+# The human-readable outcome: the error field on ERROR, otherwise the response
+# text trimmed to a bounded length.
+fm_agy_result_summary() {  # <result_file>
   local result_file=$1
-  jq -r '.summary // empty' "$result_file" 2>/dev/null || true
+  if fm_agy_result_success "$result_file" 2>/dev/null; then
+    jq -r '.response // empty' "$result_file" 2>/dev/null | head -c 2000 || true
+  else
+    jq -r '.error // empty' "$result_file" 2>/dev/null | head -c 2000 || true
+  fi
 }
 
-fm_agy_result_changed_files() {
-  local result_file=$1
-  jq -r '.changed_files[]?' "$result_file" 2>/dev/null || true
-}
+# ---- observe / control (tmux) ---------------------------------------------
 
-# ---- interrupt / cancel ---------------------------------------------------
-
-fm_agy_interrupt() {
+fm_agy_is_running() {  # <target>
   local target=$1
-  fm_backend_tmux_send_key "$target" C-c 2>/dev/null || true
+  fm_backend_tmux_current_command "$target" 2>/dev/null | grep -qx 'agy'
 }
 
-fm_agy_pane_pid() {
+fm_agy_pane_pid() {  # <target>
   local target=$1
   tmux list-panes -t "$target" -F '#{pane_pid}' 2>/dev/null | head -1
 }
 
-fm_agy_terminate() {
-  local target=$1
-  local pane_pid
-
+# Interrupt an agy run: SIGINT first, then SIGTERM, then SIGKILL on the pane's
+# process group, with bounded waits between escalations. Returns nonzero only
+# when the process is still alive after every escalation.
+fm_agy_terminate() {  # <target>
+  local target=$1 pane_pid
   fm_backend_tmux_send_key "$target" C-c 2>/dev/null || true
   sleep 2
   fm_agy_is_running "$target" || return 0
@@ -365,16 +365,17 @@ fm_agy_terminate() {
 
 # ---- cleanup --------------------------------------------------------------
 
-fm_agy_cleanup() {
-  local task_id=$1
-  local dir
-  dir=$(fm_agy_result_dir "$task_id")
-  rm -rf "$dir" 2>/dev/null || true
+# Remove this task's agy artifacts (result, log, temp) without ever deleting a
+# path outside the task-owned directory. The directory itself is left to the
+# task cleanup owner; only the adapter's own files are retired here.
+fm_agy_cleanup() {  # <task_id>
+  local task_id=$1 dir
+  dir=$(fm_agy_result_dir "$task_id") || return 1
+  rm -f "$dir"/result-*.json "$dir"/result-*.json.tmp.* "$dir"/agy-*.log 2>/dev/null || true
 }
 
-# ---- harness registration (for fm-spawn.sh) -------------------------------
+# ---- harness registration -------------------------------------------------
 
-# fm_agy_harness_name: the adapter name used in config/crew-harness.
 fm_agy_harness_name() {
   printf 'agy'
 }

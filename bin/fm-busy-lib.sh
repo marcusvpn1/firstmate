@@ -203,6 +203,11 @@ fm_busy_sources_for_harness() {  # <harness>
       fm_busy_kimi_verified || { printf ''; return 0; }
       adapter='kimi-wire kimi-hook'
       ;;
+    # agy is a one-shot headless adapter: it renders no spinner and has no
+    # semantic busy writer. Its running/terminal state comes from backend
+    # process liveness plus the validated generation-bound result artifact
+    # (bin/fm-agy-lib.sh), so it arms no busy record and trusts no spinner text.
+    agy*) printf ''; return 0 ;;
     *) printf ''; return 0 ;;
   esac
   printf '%s fm-spawn fm-interrupt fm-recovery' "$adapter"

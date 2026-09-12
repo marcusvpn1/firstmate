@@ -1332,7 +1332,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   }
 elif [ "$KIND" = secondmate ]; then
   case "${POS[1]:-}" in
-    ''|claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|cursor|gemini|muse|rovo|omp|agy)
+    ''|claude|codex|opencode|pi|pi-signed|pi-qwen-alienware|grok|kimi|cursor|gemini|muse|rovo|omp)
       ARG3=${POS[1]:-}
       ;;
     *' '*)
@@ -1551,18 +1551,15 @@ launch_template() {
     # Its turn-end signal is a globally configured Stop hook plus a guarded
     # per-task worktree token, so no launch placeholder belongs here.
     kimi) printf '%s' '__KIMIBIN__ __MODELFLAG__--auto' ;;
-    # AGY is a headless harness that runs `agy -p` (--print) to process the
-    # brief non-interactively and exits when done.
-    # It runs inside a PTY (tmux pane) so it sees a TTY; piped stdout is NOT
-    # the protocol. The watcher captures the pane after exit and validates the
-    # per-run result.json artifact. Exit code 0 is not trusted - only a valid
-    # result.json with status=success counts as completion.
-    # AGY does not support interactive steer or turn-end hooks, so there is no
-    # harness-specific hook installed below and no secondmate support.
-    # Model and effort flags are passed inline; unsupported effort values are
-    # omitted rather than guessed.
-    # The --log-file flag writes AGY's internal log to the task temp directory.
-    agy) printf '%s' 'agy -p --output-format json --dangerously-skip-permissions __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+    # agy (Agy CLI) is an EXPERIMENTAL, unverified one-shot adapter and is
+    # DELIBERATELY absent from this case. With no template arm, launch_template
+    # returns nonzero for agy, and the explicit refuse_agy guards in the arg
+    # branches below refuse it before any endpoint is created, so normal
+    # dispatch never reaches a launch. Agy may only be exercised through the
+    # opt-in live guard (tests/fm-agy-live-e2e.test.sh, FM_AGY_LIVE=1), which
+    # invokes the binary directly and validates its result through
+    # bin/fm-agy-lib.sh. Its launch shape, version pin, and result schema stay
+    # documented in bin/fm-agy-lib.sh and references/harness/agy.md.
     # muse (Muse Code): a positional prompt starts the supervised interactive
     # session. --yolo is the single flag that makes a crewmate pane viable: muse
     # ships approval prompts AND a filesystem/network sandbox ON by default
@@ -1616,6 +1613,51 @@ launch_template() {
   esac
 }
 
+# agy (Agy CLI) is an EXPERIMENTAL, unverified one-shot adapter with no verified
+# control, liveness, or result-consumption path, so it is refused by normal
+# dispatch in every form - an explicit `fm-spawn ... agy`, config/crew-harness
+# (or config/secondmate-harness) naming agy, and every statically detectable
+# spelling of the raw launch escape hatch - rather than launched blind. The only
+# sanctioned way to exercise it is the
+# opt-in live guard (tests/fm-agy-live-e2e.test.sh, FM_AGY_LIVE=1), which
+# invokes the binary directly and validates its result through bin/fm-agy-lib.sh.
+refuse_agy() {
+  echo "error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness." >&2
+  exit 1
+}
+
+# True when a raw launch command names the agy executable in any command word,
+# including when it is wrapped behind a launcher (`env FOO=bar agy ...`,
+# `command agy ...`, `nohup agy ...`, `sh -c 'agy ...'`) and in any letter case
+# (`AGY ...`): the executable lookup is case-insensitive on the target platform,
+# so an uppercase spelling resolves to the same binary. The first-word harness
+# derivation above cannot see through a wrapper, so agy's raw-launch refusal
+# must inspect every word. This is a static scan of the command text, so it
+# first strips shell quote and escape characters - collapsing a token assembled
+# from adjacent fragments (`a"g"y`, `a'g'y`, `a\gy`) back to its literal
+# spelling - then maps every remaining non-identifier character to a word
+# boundary, exposing agy when grouping or expansion syntax fuses it to its
+# operators (`(agy ...)`, `A=agy; $A ...`, `${AGY:-agy}`, `$(printf agy)`).
+# This is deliberately over-eager: any literal `agy` word refuses, because the
+# refusal is fail-closed and the escape hatch is for unverified adapters, not a
+# place to spell agy as an argument. Globbing is disabled so a file named `agy`
+# cannot expand into a false refusal. A command that computes the name at
+# runtime from characters that never appear contiguously (`$'a\x67y'`,
+# `a$(printf g)y`) cannot be resolved by a static scan and is not claimed.
+raw_command_invokes_agy() {
+  local word normalized stripped
+  stripped=${1//[\'\"\\]/}
+  normalized=$(printf '%s' "$stripped" | LC_ALL=C tr -c 'A-Za-z0-9_' ' ')
+  set -f
+  for word in $normalized; do
+    case "$word" in
+      [aA][gG][yY]) set +f; return 0 ;;
+    esac
+  done
+  set +f
+  return 1
+}
+
 case "$ARG3" in
   *' '*)  # raw launch command (unverified-adapter escape hatch)
     RAW_LAUNCH=1
@@ -1645,10 +1687,12 @@ case "$ARG3" in
       HARNESS=$("$FM_ROOT/bin/fm-harness.sh" crew)
       harness_src='config/crew-harness'
     fi
+    [ "$HARNESS" = agy ] && refuse_agy
     LAUNCH=$(launch_template "$HARNESS" "$KIND") || { echo "error: no launch template for harness '$HARNESS' (from $harness_src or detection); pass a raw launch command to use an unverified adapter" >&2; exit 1; }
     ;;
   *)
     HARNESS=$ARG3
+    [ "$HARNESS" = agy ] && refuse_agy
     LAUNCH=$(launch_template "$HARNESS" "$KIND") || { echo "error: unknown harness '$HARNESS'; pass a raw launch command to use an unverified adapter" >&2; exit 1; }
     ;;
 esac
@@ -1687,6 +1731,16 @@ fi
 if [ "$KIND" = secondmate ] && [ "$HARNESS" = rovo ]; then
   echo "error: rovo is a verified crewmate/scout adapter only and cannot run a secondmate; it has no primary supervision protocol. Select a harness verified for secondmates." >&2
   exit 1
+fi
+
+# agy (Agy CLI) is an EXPERIMENTAL, unverified one-shot adapter. The `''` and
+# explicit-arg branches above already refuse it via refuse_agy before the launch
+# template lookup. This block is the raw-launch escape-hatch guard: a raw command
+# that names agy in any word (its first word, or wrapped behind env/command/
+# nohup/sh -c) is refused here too, rather than bypassing the refusal by hiding
+# agy behind a helper.
+if [ "$HARNESS" = agy ] || { [ "$RAW_LAUNCH" -eq 1 ] && raw_command_invokes_agy "$LAUNCH"; }; then
+  refuse_agy
 fi
 
 case "$HARNESS" in
@@ -3556,9 +3610,11 @@ EOF
       exclude_path '.fm-kimi-turnend'
       ;;
     agy*)
-      # AGY is headless - it runs, prints JSON, and exits.
-      # No turn-end hook is needed; the watcher detects completion by
-      # capturing the pane and validating the result.json artifact.
+      # agy is refused by normal dispatch above, so this arm is unreachable and
+      # installs no turn-end hook. If agy is ever exercised, it runs only
+      # through the opt-in live guard (tests/fm-agy-live-e2e.test.sh), which
+      # validates the result artifact directly via bin/fm-agy-lib.sh; there is
+      # no production watcher/collection consumer for agy.
       ;;
   esac
 fi
@@ -3785,12 +3841,10 @@ sq_status=$(shell_quote "$STATE/$ID.status")
 sq_runrecord=$(shell_quote "$DATA/$ID/run-record.json")
 sq_tasktmp=$(shell_quote "$TASK_TMP")
 sq_id=$(shell_quote "$ID")
-sq_agylog=$(shell_quote "$TASK_TMP/agy.log")
 MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT")
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
 LAUNCH=${LAUNCH//__EFFORTFLAG__/$EFFORTFLAG}
-LAUNCH=${LAUNCH//__AGYLOGFILE__/$sq_agylog}
 if [ "$HARNESS" = rovo ]; then
   ROVOCONFIGOVERRIDE=$(rovo_config_override_flag "$EFFORT" "$DATA" "$STATE" "$ID") || {
     echo "error: could not resolve this task's home paths for rovo's allowedExternalPaths grant" >&2

@@ -1502,3 +1502,66 @@ A throwaway scout was spawned through `bin/fm-spawn.sh --scout --harness omp --m
 6. `bin/fm-control.sh <id> exit` stopped the agent and `bin/fm-teardown.sh` returned the worktree and closed the item.
 
 `FM_OMP_LIVE_E2E=1 tests/fm-omp-primary-live-e2e.test.sh` refreshes the primary evidence; the worker path above is refreshed by repeating the scout dispatch after any omp upgrade.
+
+## Agy
+
+EXPERIMENTAL and unverified; not in the verified adapter list and refused by normal dispatch everywhere — `bin/fm-spawn.sh` refuses every agy dispatch (explicit, `config/crew-harness`, secondmate, and every statically detectable spelling of the raw launch escape hatch), `bin/fm-bootstrap.sh` excludes it from the verified allowlist, and `bin/fm-quota-choose.sh` rejects it (no provider family).
+The raw-launch guard scans the literal command text: it refuses agy spelled directly, wrapped, in another letter case, assembled from quoted or backslash-escaped fragments, or fused with grouping/assignment/parameter-expansion/command-substitution syntax containing a literal `agy`. A command that computes the executable name at runtime from characters that never appear contiguously (`$'a\x67y'`, `a$(printf g)y`) is not resolved by that static scan and is outside the guarantee; the escape hatch is a generic arbitrary-command mechanism and must not be used to launch agy.
+The observations here were produced on 2026-09-11 against agy 1.2.1 (`~/.local/bin/agy`, a Go binary) on macOS arm64.
+
+### Result schema
+
+The real `agy --output-format json` result object on success is:
+
+```json
+{"conversation_id":"<conversation-id>","status":"SUCCESS","response":"hello","duration_seconds":1.14,"num_turns":1,"usage":{"input_tokens":12456,"output_tokens":1,"thinking_tokens":0,"cache_read_tokens":8146,"total_tokens":12457}}
+```
+
+and on error the same object carries `status` `ERROR`, a present `error` string, an empty `conversation_id`, `num_turns` `0`, and exit code `1`.
+When a tool action is auto-denied, the object also carries `denied_actions` (an array of `{action, display_name}`); a `SUCCESS` result with a non-empty `denied_actions` is a failed task because the work did not happen.
+`bin/fm-agy-lib.sh` validates this schema strictly: malformed JSON, unknown top-level or usage keys, wrong types, and unknown statuses all fail closed, and success requires both `status` `SUCCESS` and no denied actions.
+
+### Launch shape and the dashline bug
+
+A bare `agy -p <prompt>` is broken: `-p` swallows the next flag as its prompt and ignores the real prompt.
+The prompt must be attached with `=` (`-p="<prompt>"`), which `fm_agy_launch_template` now places with the flags first.
+`--dangerously-skip-permissions` is load-bearing: without it, headless mode cannot prompt for the `command` (bash) permission and auto-denies it, so no file work happens.
+`--add-dir <worktree>` is also load-bearing: without it, agy's file tool writes into `~/.gemini/antigravity-cli/scratch/` rather than the task worktree (observed 2026-09-11: a create-file prompt wrote to the scratch dir until `--add-dir` was added, after which it wrote to the worktree).
+
+### Process identity and children
+
+`ps -o comm=` reports the exact name `agy` for the agent process, so detection is anchored and never globbed.
+The run spawns a local `codebase-memory-mcp` child and an `npm exec mcp-remote https://stitch.googleapis.com/mcp` child, so agy's MCP children are network-unrestricted; see the resolved permission boundary below.
+
+### Model catalog
+
+`agy models` lists 14 models: `gemini-3.8/3.7/3.6-flash-{high,medium,low}`, `gemini-3.1-pro-{high,low}`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, and `gpt-oss-120b-medium`.
+
+### Quota
+
+`quota-axi` 0.1.41 reports an `agy` provider (plan `Google AI Pro`) with fresh windows but empty effective availability (unresolved `gemini_5h`, `gemini_weekly`, `claude_gpt_weekly`), so quota is unmeasurable and `bin/fm-quota-choose.sh` rejects agy rather than guessing a provider family.
+
+### Live guard
+
+`FM_AGY_LIVE=1 tests/fm-agy-live-e2e.test.sh` is the opt-in guard that submits a real prompt under the same ambient-secret scrub (`fm_agy_env_scrub_code`) and re-verifies the pinned version and the result schema; it fails loudly naming the installed version when that version does not match the pin.
+
+### End-to-end Hello World (2026-09-11, historical)
+
+> This spawn exercise is recorded as historical proof-gate evidence. Agy is now refused by normal dispatch (see the header), so this exercise can no longer be reproduced through `bin/fm-spawn.sh`; the opt-in live guard above is the only sanctioned execution.
+
+A disposable repo (README only) and a disposable task home were spawned through `bin/fm-spawn.sh --mode no-mistakes --yolo off --backend tmux <id> <proj> agy` with the real 1.2.1 binary and a real tmux socket.
+The spawn recorded `harness=agy`, `kind=ship`, `worktree`, `project`, `tasktmp=/tmp/fm-<id>`, and a fresh `spawn_gen` in `state/<id>.meta`.
+The pane read as the exact `agy` process while running, then a shell after exit, so liveness is observable and terminal.
+agy created `hello.txt` in the task worktree with exactly `Hello, World!\n`, the only worktree change beside the pre-existing README, and the parent Firstmate worktree was unchanged.
+The result was atomically published to the generation-bound `/tmp/fm-<id>/result-<spawn_gen>.json` and validated as `status` `SUCCESS` with no `denied_actions`.
+This is the exact brief-and-spawn acceptance exercise the proof gate requires, and it passes on agy 1.2.1.
+
+### Permission boundary (resolved 2026-09-11)
+
+The captain's 2026-09-11 decision closes the permission-boundary gap by scrubbing ambient secrets from agy's launch environment, and records two explicit limitations rather than leaving the boundary an open question:
+
+1. **Scrubbed launch environment.** `fm_agy_env_scrub_code` unsets `STITCH_X_GOOG_API_KEY`, `STITCH_API_KEY`, `ANTHROPIC_API_KEY`, `APIFY_API_KEY`, `HF_TOKEN`, and every other `*_API_KEY` / `*_TOKEN` / `*_SECRET` var in the pane shell before agy runs, so agy's MCP children never inherit ambient credentials. The operator's own shell (which feeds the Stitch MCP server) is untouched.
+2. **Unverified MCP sandbox.** agy's MCP children are treated as network-unrestricted: their `--sandbox` behavior is unverified, so no permission proof exists for their network or home access.
+
+The env scrub is verified by a portable behavior test (`tests/fm-agy-harness.test.sh`) that proves the emitted fragment removes every secret-patterned var while preserving unrelated vars, and is applied by the live guard before it execs agy on agy 1.2.1.
+agy also reads `~/.gemini/antigravity-cli` state and, without `--add-dir`, writes files into `~/.gemini/antigravity-cli/scratch/` instead of the task worktree; `--add-dir` remains load-bearing for worktree writes.
