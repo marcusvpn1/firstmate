@@ -3,7 +3,7 @@
 EXPERIMENTAL and unverified.
 Not added to the verified adapter list, and refused by normal dispatch in every form (explicit `fm-spawn ... agy`, `config/crew-harness`, secondmate, and every statically detectable spelling of the raw launch escape hatch), so no dispatch path statically resolved to agy reaches a launch. The only sanctioned execution is the opt-in live guard (`tests/fm-agy-live-e2e.test.sh`, `FM_AGY_LIVE=1`), which invokes the binary directly under the PG4 ambient-secret scrub and validates its result.
 
-Observed on Agy 1.2.1 (2026-09-11) via the live guard (and, historically, a one-shot crewmate/scout spawn during the proof gate).
+Observed on Agy 1.2.1 (2026-09-11) via the live guard (and, historically, a one-shot crewmate spawn during the proof gate).
 The installed binary auto-updates, so the exact version pin is load-bearing: the live guard refuses any version other than the pinned one (`fm_agy_version_pinned`) rather than trusting a CLI surface that may have drifted.
 
 ## Operating facts
