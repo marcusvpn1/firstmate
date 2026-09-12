@@ -1505,7 +1505,8 @@ A throwaway scout was spawned through `bin/fm-spawn.sh --scout --harness omp --m
 
 ## Agy
 
-EXPERIMENTAL and unverified; not in the verified adapter list and refused by normal dispatch everywhere — `bin/fm-spawn.sh` refuses every agy dispatch (explicit, `config/crew-harness`, secondmate, and the raw launch escape hatch), `bin/fm-bootstrap.sh` excludes it from the verified allowlist, and `bin/fm-quota-choose.sh` rejects it (no provider family).
+EXPERIMENTAL and unverified; not in the verified adapter list and refused by normal dispatch everywhere — `bin/fm-spawn.sh` refuses every agy dispatch (explicit, `config/crew-harness`, secondmate, and every statically detectable spelling of the raw launch escape hatch), `bin/fm-bootstrap.sh` excludes it from the verified allowlist, and `bin/fm-quota-choose.sh` rejects it (no provider family).
+The raw-launch guard scans the literal command text: it refuses agy spelled directly, wrapped, in another letter case, assembled from quoted or backslash-escaped fragments, or fused with grouping/assignment/parameter-expansion/command-substitution syntax containing a literal `agy`. A command that computes the executable name at runtime from characters that never appear contiguously (`$'a\x67y'`, `a$(printf g)y`) is not resolved by that static scan and is outside the guarantee; the escape hatch is a generic arbitrary-command mechanism and must not be used to launch agy.
 The observations here were produced on 2026-09-11 against agy 1.2.1 (`~/.local/bin/agy`, a Go binary) on macOS arm64.
 
 ### Result schema

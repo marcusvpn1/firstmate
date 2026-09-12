@@ -5,7 +5,8 @@
 # the verified adapter list (AGENTS.md section 4, bin/fm-control-lib.sh,
 # bin/fm-quota-choose.sh) and is REFUSED by normal dispatch everywhere:
 # bin/fm-spawn.sh refuses every agy dispatch (explicit, config/crew-harness,
-# secondmate, and the raw launch escape hatch), so no production path reaches
+# secondmate, and every statically detectable spelling of the raw launch escape
+# hatch), so no production path reaches
 # this library. The only sanctioned way to exercise agy is the opt-in live
 # guard (tests/fm-agy-live-e2e.test.sh, FM_AGY_LIVE=1), which invokes the binary
 # directly under the PG4 ambient-secret scrub and validates its result through

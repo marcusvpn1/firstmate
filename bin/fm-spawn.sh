@@ -1616,8 +1616,9 @@ launch_template() {
 # agy (Agy CLI) is an EXPERIMENTAL, unverified one-shot adapter with no verified
 # control, liveness, or result-consumption path, so it is refused by normal
 # dispatch in every form - an explicit `fm-spawn ... agy`, config/crew-harness
-# (or config/secondmate-harness) naming agy, and the raw launch escape hatch -
-# rather than launched blind. The only sanctioned way to exercise it is the
+# (or config/secondmate-harness) naming agy, and every statically detectable
+# spelling of the raw launch escape hatch - rather than launched blind. The only
+# sanctioned way to exercise it is the
 # opt-in live guard (tests/fm-agy-live-e2e.test.sh, FM_AGY_LIVE=1), which
 # invokes the binary directly and validates its result through bin/fm-agy-lib.sh.
 refuse_agy() {
@@ -1631,18 +1632,22 @@ refuse_agy() {
 # (`AGY ...`): the executable lookup is case-insensitive on the target platform,
 # so an uppercase spelling resolves to the same binary. The first-word harness
 # derivation above cannot see through a wrapper, so agy's raw-launch refusal
-# must inspect every word. Shell grouping and expansion fuse the executable to
-# their operators (`(agy ...)`, `A=agy; $A ...`, `${AGY:-agy}`, `$(printf agy)`),
-# so every character that is not an identifier
-# character is treated as a word boundary before scanning, exposing the agy
-# token instead of leaving it glued to `(` / `$` / `;` / `=`. This is
-# deliberately over-eager: any literal `agy` word refuses, because the refusal
-# is fail-closed and the escape hatch is for unverified adapters, not a place to
-# spell agy as an argument. Globbing is disabled so a file named `agy` cannot
-# expand into a false refusal.
+# must inspect every word. This is a static scan of the command text, so it
+# first strips shell quote and escape characters - collapsing a token assembled
+# from adjacent fragments (`a"g"y`, `a'g'y`, `a\gy`) back to its literal
+# spelling - then maps every remaining non-identifier character to a word
+# boundary, exposing agy when grouping or expansion syntax fuses it to its
+# operators (`(agy ...)`, `A=agy; $A ...`, `${AGY:-agy}`, `$(printf agy)`).
+# This is deliberately over-eager: any literal `agy` word refuses, because the
+# refusal is fail-closed and the escape hatch is for unverified adapters, not a
+# place to spell agy as an argument. Globbing is disabled so a file named `agy`
+# cannot expand into a false refusal. A command that computes the name at
+# runtime from characters that never appear contiguously (`$'a\x67y'`,
+# `a$(printf g)y`) cannot be resolved by a static scan and is not claimed.
 raw_command_invokes_agy() {
-  local word normalized
-  normalized=$(printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9_' ' ')
+  local word normalized stripped
+  stripped=${1//[\'\"\\]/}
+  normalized=$(printf '%s' "$stripped" | LC_ALL=C tr -c 'A-Za-z0-9_' ' ')
   set -f
   for word in $normalized; do
     case "$word" in

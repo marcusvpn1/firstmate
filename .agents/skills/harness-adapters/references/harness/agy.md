@@ -1,7 +1,7 @@
 # Agy CLI
 
 EXPERIMENTAL and unverified.
-Not added to the verified adapter list, and refused by normal dispatch in every form (explicit `fm-spawn ... agy`, `config/crew-harness`, secondmate, and the raw launch escape hatch), so no dispatch path reaches a launch. The only sanctioned execution is the opt-in live guard (`tests/fm-agy-live-e2e.test.sh`, `FM_AGY_LIVE=1`), which invokes the binary directly under the PG4 ambient-secret scrub and validates its result.
+Not added to the verified adapter list, and refused by normal dispatch in every form (explicit `fm-spawn ... agy`, `config/crew-harness`, secondmate, and every statically detectable spelling of the raw launch escape hatch), so no dispatch path statically resolved to agy reaches a launch. The only sanctioned execution is the opt-in live guard (`tests/fm-agy-live-e2e.test.sh`, `FM_AGY_LIVE=1`), which invokes the binary directly under the PG4 ambient-secret scrub and validates its result.
 
 Observed on Agy 1.2.1 (2026-09-11) via the live guard (and, historically, a one-shot crewmate/scout spawn during the proof gate).
 The installed binary auto-updates, so the exact version pin is load-bearing: the live guard refuses any version other than the pinned one (`fm_agy_version_pinned`) rather than trusting a CLI surface that may have drifted.
@@ -36,7 +36,7 @@ Detection alone never authorizes a launch: `bin/fm-spawn.sh` and `bin/fm-bootstr
 
 ## Launch and result
 
-`bin/fm-spawn.sh` refuses every agy launch before endpoint creation (explicit selection, `config/crew-harness`, secondmate, and the raw launch escape hatch all fail closed), so no dispatch reaches a launch template.
+`bin/fm-spawn.sh` refuses every agy launch before endpoint creation (explicit selection, `config/crew-harness`, secondmate, and the statically detectable spellings of the raw launch escape hatch all fail closed), so no dispatch reaches a launch template.
 The launch template is owned by `../../../bin/fm-agy-lib.sh` as the documented reference shape (exercised by the portable template-contract test and the live guard's shape, not by dispatch), so the command shape, the `-p=` fix, and the result contract have one owner.
 
 The result path is task-owned and generation-bound: `/tmp/fm-<task-id>/result-<spawn_gen>.json`.
@@ -49,10 +49,11 @@ jq is a hard dependency for validation and interpretation; its absence fails exp
 
 ## Not verified
 
-The permission boundary is now handled by two explicit, documented limitations rather than left as an open question:
+The permission boundary is now handled by these explicit, documented limitations rather than left as an open question:
 
 1. **Scrubbed launch environment.** `fm_agy_env_scrub_code` unsets the named ambient secrets (`STITCH_X_GOOG_API_KEY`, `STITCH_API_KEY`, `ANTHROPIC_API_KEY`, `APIFY_API_KEY`, `HF_TOKEN`) plus every other `*_API_KEY` / `*_TOKEN` / `*_SECRET` var in the pane shell before agy runs, so no ambient credential reaches agy's MCP children. The operator's own shell (and the Stitch MCP server it feeds) is untouched.
 2. **Unverified MCP sandbox.** Agy's MCP children are treated as network-unrestricted: their `--sandbox` behavior is unverified, so no permission proof exists for their network or home access.
+3. **Statically detectable raw-launch refusal only.** The raw-launch guard scans the literal command text. It refuses agy spelled directly, wrapped behind `env`/`command`/`nohup`/`sh -c`, in another letter case, assembled from quoted or backslash-escaped fragments (`a"g"y`, `a'g'y`, `a\gy`), or fused with grouping/assignment/parameter-expansion/command-substitution syntax that still contains a literal `agy` (`(agy ...)`, `A=agy; $A`, `${AGY:-agy}`, `$(printf agy)`). A command that computes the executable name at runtime from characters that never appear contiguously (for example `$'a\x67y'` or `a$(printf g)y`) cannot be resolved by a static scan and is outside that guarantee. The raw-launch escape hatch is a generic arbitrary-command mechanism; it must not be used to launch agy.
 
 The real-binary result schema, version pin, and the PG4 ambient-secret scrub are exercised by the opt-in live guard on agy 1.2.1 (`../../../docs/verification/runtime-backends.md`); the earlier end-to-end Hello World spawn is recorded there as historical proof-gate evidence, but normal dispatch is now refused, so the live guard is the only sanctioned execution.
 Agy stays out of the verified adapter list and fails closed wherever it is named.

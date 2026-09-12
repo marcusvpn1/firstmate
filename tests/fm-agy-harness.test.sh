@@ -680,6 +680,42 @@ raw='$raw' created $home/state/$id.meta"
   pass "fm-spawn: a raw command that resolves to agy through grouping or expansion is refused"
 }
 
+# A token can also be assembled from adjacent quoted or escaped fragments
+# (`a"g"y`, `a'g'y`, `a\gy`) or a command substitution carrying a literal agy
+# (`$(printf 'a''g''y')`). The guard strips quote and escape characters before
+# normalizing word boundaries, so those statically detectable spellings are
+# refused like the literal word. A name computed from characters that never
+# appear contiguously (`$'a\x67y'`, `a$(printf g)y`) cannot be resolved by a
+# static scan and is outside the documented guarantee.
+test_agy_spawn_refused_quoted_raw_command() {
+  local raw rec case_dir home proj wt fakebin id out status idx=0 failures=''
+  for raw in 'a"g"y -p hello' "a'g'y -p hello" 'a\gy -p hello' "\$(printf 'a''g''y') -p hello"; do
+    idx=$((idx + 1))
+    rec=$(make_spawn_case "spawn-raw-quoted-$idx")
+    IFS='|' read -r case_dir home proj wt fakebin id <<EOF
+$rec
+EOF
+    out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" \
+      FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+      FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+      FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
+      FM_AGY_PRINT_TIMEOUT=600 \
+      PATH="$fakebin:$BASE_PATH" \
+      "$SPAWN" --mode no-mistakes --yolo off "$id" "$proj" "$raw" 2>&1)
+    status=$?
+    if [ "$status" -eq 0 ] || ! printf '%s' "$out" | grep -q 'refused by normal dispatch'; then
+      failures="$failures
+raw='$raw' status=$status: $out"
+    fi
+    if [ -e "$home/state/$id.meta" ]; then
+      failures="$failures
+raw='$raw' created $home/state/$id.meta"
+    fi
+  done
+  [ -z "$failures" ] || fail "a quoted/escaped raw launch command bypassed the agy refusal:$failures"
+  pass "fm-spawn: a raw command assembling agy from quoted or escaped fragments is refused"
+}
+
 test_agy_control_refused() {
   if bash -c '. "$1"; fm_control_harness_supported agy' _ "$CONTROL_LIB" 2>/dev/null; then
     fail "agy control was reported harness-supported"
@@ -749,3 +785,4 @@ test_agy_spawn_rejects_secondmate
 test_agy_spawn_refused_on_herdr
 test_agy_spawn_refused_wrapped_raw_command
 test_agy_spawn_refused_expansion_raw_command
+test_agy_spawn_refused_quoted_raw_command
