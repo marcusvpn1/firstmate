@@ -653,6 +653,7 @@ raw='$raw' created $home/state/$id.meta"
 # rejects the command before any endpoint is created.
 test_agy_spawn_refused_expansion_raw_command() {
   local raw rec case_dir home proj wt fakebin id out status idx=0 failures=''
+  # shellcheck disable=SC2016 # These raw commands are literal fm-spawn input; they must not expand here.
   for raw in '(agy -p hello)' 'A=agy; $A -p hello' 'A=agy; env $A -p hello' '${AGY:-agy} -p hello' 'sh -c "$(printf agy) -p hello"' 'AGYBIN=agy; exec $AGYBIN -p hello'; do
     idx=$((idx + 1))
     rec=$(make_spawn_case "spawn-raw-expand-$idx")
