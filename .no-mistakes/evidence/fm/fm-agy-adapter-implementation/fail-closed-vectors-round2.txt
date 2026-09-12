@@ -1,0 +1,20 @@
+
+### --harness agy
+ exit=1 meta=absent
+ error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+
+### --harness=agy
+ exit=1 meta=absent
+ error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+
+### --harness 'agy -p hello'
+ exit=1 meta=absent
+ error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+
+### config/secondmate-harness=agy (no positional)
+ exit=1 meta=absent
+ error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+
+### relaunch of a task recorded harness=agy
+ exit=1 meta=CREATED
+ error: task agy-relaunch-x1's endpoint reads 'missing'; a relaunch requires a positively agent-free endpoint (stop the agent first with bin/fm-control.sh agy-relaunch-x1 exit)

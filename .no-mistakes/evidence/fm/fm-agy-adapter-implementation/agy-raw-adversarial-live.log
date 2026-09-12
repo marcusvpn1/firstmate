@@ -1,0 +1,19 @@
+REFUSED rc=1  raw=[eval agy -p hello]
+REFUSED rc=1  raw=[a\gy -p hello]
+REFUSED rc=1  raw=[a''gy -p hello]
+REFUSED rc=1  raw=['a'gy -p hello]
+REFUSED rc=1  raw=[env FOO=bar agy]
+REFUSED rc=1  raw=[command -- agy -p hello]
+REFUSED rc=1  raw=[env -i PATH=/usr/bin:/bin agy -p hello]
+BLOCKED-OTHER rc=1  raw=[sh -c "$(printf agy) -p hello"] out=[warning: /tmp/agy-adv-work/adv-8/home/data/agy-adv-8-x1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: treehouse get did not enter an isolated worktree within 60s (last seen '/tmp/agy-adv-work/adv-8/wt': it is not a readable directory; spawning project '/tmp/agy-adv-work/adv-8/project'); inspect window firstmate:fm-agy-adv-8-x1]
+BLOCKED-OTHER rc=1  raw=[A=agy; $A -p hello] out=[warning: /tmp/agy-adv-work/adv-9/home/data/agy-adv-9-x1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: treehouse get did not enter an isolated worktree within 60s (last seen '/tmp/agy-adv-work/adv-9/wt': it is not a readable directory; spawning project '/tmp/agy-adv-work/adv-9/project'); inspect window firstmate:fm-agy-adv-9-x1]
+BLOCKED-OTHER rc=1  raw=[A=agy; env $A -p hello] out=[warning: /tmp/agy-adv-work/adv-10/home/data/agy-adv-10-x1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: treehouse get did not enter an isolated worktree within 60s (last seen '/tmp/agy-adv-work/adv-10/wt': it is not a readable directory; spawning project '/tmp/agy-adv-work/adv-10/project'); inspect window firstmate:fm-agy-adv-10-x1]
+BLOCKED-OTHER rc=1  raw=[${AGY:-agy} -p hello] out=[warning: /tmp/agy-adv-work/adv-11/home/data/agy-adv-11-x1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: treehouse get did not enter an isolated worktree within 60s (last seen '/tmp/agy-adv-work/adv-11/wt': it is not a readable directory; spawning project '/tmp/agy-adv-work/adv-11/project'); inspect window firstmate:fm-agy-adv-11-x1]
+REFUSED rc=1  raw=[env FOO=bar "agy" -p hello]
+REFUSED rc=1  raw=[setsid agy -p hello]
+REFUSED rc=1  raw=[time agy -p hello]
+REFUSED rc=1  raw=[xargs -n1 agy <<< hello]

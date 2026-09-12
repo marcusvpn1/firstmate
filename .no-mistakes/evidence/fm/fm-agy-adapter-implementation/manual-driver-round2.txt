@@ -1,0 +1,47 @@
+===== S1: explicit agy dispatch refuses and creates no endpoint/meta =====
+exit=1
+error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+-- meta present? --
+no meta (good)
+
+===== S2: config/crew-harness=agy refuses =====
+exit=1
+error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+no meta (good)
+
+===== S3: agy secondmate refuses =====
+exit=1
+error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+
+===== S4: raw launch 'agy ...' escape hatch refuses =====
+exit=1
+error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+no meta (good)
+
+===== S5: --backend herdr refuses before endpoint creation =====
+exit=1
+error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+no meta (good)
+
+===== S6: bootstrap crew-dispatch.json naming agy is rejected =====
+CREW_DISPATCH: invalid config/crew-dispatch.json - unverified harness: agy
+
+===== S7: control plane refuses agy verbs =====
+control_supported exit=1
+control_family exit=1
+
+===== S8: detection exact 'agy' only, 'magy' not elevated =====
+detect('/usr/local/bin/agy') -> agy
+detect('/usr/local/bin/magy') -> unknown
+
+===== S9: PG4 scrub removes secrets in the launch subshell, parent untouched =====
+child KEEP_ME=kept
+child-scrub-done
+parent STITCH_API_KEY=k2
+
+===== S10: strict result validation + denied_actions =====
+ok.json: validation=valid interpretation=success
+bad.json: validation=invalid interpretation=not-success
+denied.json: validation=valid interpretation=not-success
+
+ALL MANUAL SCENARIOS DRIVEN

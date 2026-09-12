@@ -1,0 +1,4 @@
+# Live fm-harness.sh detection with fake ps ancestry
+exact /usr/local/bin/agy -> agy
+fragment /usr/local/bin/magy -> unknown
+PASS: exact agy identity detected, fragment not elevated

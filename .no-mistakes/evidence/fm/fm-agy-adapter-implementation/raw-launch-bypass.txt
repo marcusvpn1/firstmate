@@ -1,0 +1,33 @@
+
+### raw=env\ FOO=bar\ agy\ -p\ hello
+ exit=1
+ meta=absent
+ output:
+warning: /var/folders/g4/59qz1wq10jg542cxg72cscp40000gn/T//fm-agy-bypass.vBw70D/prefix-env/home/data/agy-prefix-env-x1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: treehouse get did not enter an isolated worktree within 60s (last seen 'none': the pane reported no path; spawning project '/var/folders/g4/59qz1wq10jg542cxg72cscp40000gn/T/fm-agy-bypass.vBw70D/prefix-env/project'); inspect window :fm-agy-prefix-env-x1
+
+### raw=command\ agy\ -p\ hello
+ exit=1
+ meta=absent
+ output:
+warning: /var/folders/g4/59qz1wq10jg542cxg72cscp40000gn/T//fm-agy-bypass.vBw70D/prefix-command/home/data/agy-prefix-command-x1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: treehouse get did not enter an isolated worktree within 60s (last seen 'none': the pane reported no path; spawning project '/var/folders/g4/59qz1wq10jg542cxg72cscp40000gn/T/fm-agy-bypass.vBw70D/prefix-command/project'); inspect window :fm-agy-prefix-command-x1
+
+### raw=nohup\ agy\ -p\ hello
+ exit=1
+ meta=absent
+ output:
+warning: /var/folders/g4/59qz1wq10jg542cxg72cscp40000gn/T//fm-agy-bypass.vBw70D/prefix-nohup/home/data/agy-prefix-nohup-x1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: treehouse get did not enter an isolated worktree within 60s (last seen 'none': the pane reported no path; spawning project '/var/folders/g4/59qz1wq10jg542cxg72cscp40000gn/T/fm-agy-bypass.vBw70D/prefix-nohup/project'); inspect window :fm-agy-prefix-nohup-x1
+
+### raw=/usr/local/bin/agy\ -p\ hello
+ exit=1
+ meta=absent
+ output:
+error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+
+### raw=agy\ -p\ hello
+ exit=1
+ meta=absent
+ output:
+error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.

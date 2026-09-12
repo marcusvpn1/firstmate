@@ -1,0 +1,42 @@
+### raw-launch agy refusal battery (real fm-spawn.sh, 10s cap) ###
+still-first-word             REFUSED     meta=absent agy -p hello
+      | error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+      | RC=1
+abs-path                     REFUSED     meta=absent /Users/marcusnascimento/.local/bin/agy -p hello
+      | error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+      | RC=1
+dot-slash                    REFUSED     meta=absent ./agy -p hello
+      | error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+      | RC=1
+env-wrapper                  REFUSED     meta=absent env FOO=bar agy -p hello
+      | error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+      | RC=1
+env-var-quoted               REFUSED     meta=absent env 'FOO=bar' agy -p hello
+      | error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+      | RC=1
+command-builtin              REFUSED     meta=absent command agy -p hello
+      | error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+      | RC=1
+nohup-wrapper                REFUSED     meta=absent nohup agy -p hello
+      | error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+      | RC=1
+sh-c-wrapper                 REFUSED     meta=absent sh -c 'agy -p hello'
+      | error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+      | RC=1
+bash-c-wrapper               REFUSED     meta=absent bash -c 'agy -p hello'
+      | error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+      | RC=1
+backslash-escape             REFUSED     meta=absent \agy -p hello
+      | error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+      | RC=1
+double-quoted                REFUSED     meta=absent "agy" -p hello
+      | error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+      | RC=1
+uppercase-name               NOT-REFUSED meta=absent AGY -p hello
+      | <TIMED OUT after 10s: reached the launch path, not refused>
+uppercase-env                NOT-REFUSED meta=absent env FOO=bar AGY -p hello
+      | <TIMED OUT after 10s: reached the launch path, not refused>
+nested-path                  REFUSED     meta=absent agy/../agy -p hello
+      | error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.
+      | RC=1
+### done ###

@@ -1,0 +1,8 @@
+# Live Agy guard: FM_AGY_LIVE=1 bash tests/fm-agy-live-e2e.test.sh (real agy 1.2.1)
+# Captured 2026-09-12T00:35:32Z
+
+BOOTSTRAP_INFO: live agy version: 1.2.1 (pinned 1.2.1)
+agy: version-ok 1.2.1
+validate-ok
+BOOTSTRAP_INFO: live agy result status: SUCCESS
+ok - real agy 1.2.1 submits a prompt and publishes a valid SUCCESS result

@@ -1,0 +1,42 @@
+ok - fm-harness detects the exact agy process name
+ok - fm-harness does not glob-match unrelated commands as agy
+ok - agy_detect finds and reports the installed version
+ok - agy_detect fails when agy is not on PATH
+ok - agy_version_pinned accepts the pinned version
+ok - agy_version_pinned refuses a mismatching version
+ok - agy_auth_status reports ok when models list succeeds
+ok - agy_auth_status fails when agy models command fails
+ok - result file path is bound to task id plus spawn generation
+ok - result dir refuses a path-traversal task id
+ok - launch template fixes the -p flag, redirects to a generation-bound temp file, and scrubs ambient secrets
+ok - env scrub removes every secret-patterned var and preserves unrelated vars
+ok - publish writes the result atomically with private mode
+ok - publish rejects an empty result
+ok - publish rejects an oversized result
+ok - validate accepts a valid SUCCESS result
+ok - validate accepts a valid ERROR result
+ok - validate rejects a missing file
+ok - validate rejects an empty file
+ok - validate rejects malformed JSON
+ok - validate rejects an unknown top-level key
+ok - validate rejects an unknown usage key
+ok - validate rejects a wrong type
+ok - validate rejects an unknown terminal status
+ok - validate rejects an oversized file
+ok - result_success returns true for status SUCCESS
+ok - result_success returns false for status ERROR
+ok - denied_actions validates as a real field but never counts as success
+ok - cleanup removes the task's agy result artifacts
+ok - is_running detects the exact agy process name
+ok - is_running never mistakes an idle shell for agy
+ok - agy control verbs are refused (no control family, not harness-supported)
+validate-ok
+ok - generation-bound paths keep a stale artifact out of the current result, and cleanup retires both
+ok - fm-spawn: agy is refused by normal dispatch even on tmux with a matching version
+ok - fm-spawn: a refused agy spawn creates no meta file
+ok - fm-spawn: config/crew-harness=agy is refused
+ok - fm-spawn: agy secondmate is refused
+ok - fm-spawn: agy is refused on the herdr backend before endpoint creation
+ok - fm-spawn: a raw command wrapping agy behind env/command/nohup/sh, or spelling it in another case, is refused
+ok - fm-spawn: a raw command that resolves to agy through grouping or expansion is refused
+ok - fm-spawn: a raw command assembling agy from quoted or escaped fragments is refused

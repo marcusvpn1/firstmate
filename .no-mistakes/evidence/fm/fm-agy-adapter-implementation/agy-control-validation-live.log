@@ -1,0 +1,21 @@
+=== control refusal (real bin/fm-control-lib.sh) ===
+harness-supported: NO (refused)
+family: none (refused)
+
+=== result validation + generation + cleanup (real bin/fm-agy-lib.sh) ===
+stale=/tmp/fm-evidence-val-36960/result-gen-old.json
+cur=/tmp/fm-evidence-val-36960/result-gen-new.json
+validate-ok
+current: valid+success
+validate-error: schema mismatch: jq: parse error: Invalid numeric literal at line 1, column 4
+stale: rejected
+cleanup removed cur
+cleanup removed stale
+
+=== quota provider for agy (real bin/fm-quota-choose.sh provider_for_harness) ===
+mapped:  (BAD)
+agy -> REJECTED (no provider family)
+claude -> claude
+codex -> codex
+omp -> REJECTED (no provider family)
+agy rejected: PASS

@@ -1,0 +1,28 @@
+### Round-5 agy raw-launch refusal battery (real bin/fm-spawn.sh) ###
+### guard: bin/fm-spawn.sh raw_command_invokes_agy (HEAD 7e88bbc5) ###
+
+-- regression: quoted/escaped fragments (the round-5 fix) --
+OK     refuse    double-quoted-concat REFUSED     meta=absent  sendkeys=no  a"g"y -p hello
+OK     refuse    single-quoted-concat REFUSED     meta=absent  sendkeys=no  a'g'y -p hello
+OK     refuse    backslash-escaped REFUSED     meta=absent  sendkeys=no  a\gy -p hello
+OK     refuse    literal-cmdsubst REFUSED     meta=absent  sendkeys=no  $(printf 'a''g''y') -p hello
+
+-- regression: previously-detected statically detectable forms --
+OK     refuse    literal          REFUSED     meta=absent  sendkeys=no  agy -p hello
+OK     refuse    env-wrapper      REFUSED     meta=absent  sendkeys=no  env FOO=bar agy -p hello
+OK     refuse    command-builtin  REFUSED     meta=absent  sendkeys=no  command agy -p hello
+OK     refuse    nohup-wrapper    REFUSED     meta=absent  sendkeys=no  nohup agy -p hello
+OK     refuse    sh-c-wrapper     REFUSED     meta=absent  sendkeys=no  sh -c 'agy -p hello'
+OK     refuse    uppercase        REFUSED     meta=absent  sendkeys=no  AGY -p hello
+OK     refuse    uppercase-env    REFUSED     meta=absent  sendkeys=no  env FOO=bar AGY -p hello
+OK     refuse    grouped-subshell REFUSED     meta=absent  sendkeys=no  (agy -p hello)
+OK     refuse    assignment-expand REFUSED     meta=absent  sendkeys=no  A=agy; $A -p hello
+OK     refuse    param-expansion  REFUSED     meta=absent  sendkeys=no  ${AGY:-agy} -p hello
+OK     refuse    cmdsubst-print   REFUSED     meta=absent  sendkeys=no  sh -c "$(printf agy) -p hello"
+OK     refuse    abs-path         REFUSED     meta=absent  sendkeys=no  /Users/marcusnascimento/.local/bin/agy -p hello
+
+-- outside the documented static guarantee (runtime-computed; may proceed) --
+INFO   outside   ansi-c-hex       NOT-REFUSED meta=absent  sendkeys=yes $'a\x67y' -p hello
+INFO   outside   embedded-cmdsubst NOT-REFUSED meta=absent  sendkeys=yes a$(printf g)y -p hello
+
+### done ###

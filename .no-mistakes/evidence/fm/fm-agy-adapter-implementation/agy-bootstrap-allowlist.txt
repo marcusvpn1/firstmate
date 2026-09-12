@@ -1,0 +1,11 @@
+bootstrap output:
+MISSING: treehouse (install: curl -fsSL https://kunchenguid.github.io/treehouse/install.sh | sh)
+MISSING: no-mistakes (install: curl -fsSL https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh | sh)
+MISSING: gh-axi (install: npm install -g gh-axi && gh-axi setup hooks)
+MISSING: lavish-axi (install: npm install -g lavish-axi && lavish-axi setup hooks)
+MISSING: quota-axi (install: npm install -g quota-axi)
+MISSING: tasks-axi (install: npm install -g tasks-axi)
+CREW_DISPATCH: invalid config/crew-dispatch.json - unverified harness: agy
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+PASS: real fm-bootstrap.sh rejects an agy crew-dispatch profile as unverified

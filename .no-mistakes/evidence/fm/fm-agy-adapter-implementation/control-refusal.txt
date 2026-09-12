@@ -1,0 +1,9 @@
+=== fm-control.sh agy-control-x1 interrupt ===
+error: task agy-control-x1 records harness 'agy', which has no verified control mechanics; fm-control refuses to guess an interrupt key or exit command
+exit=1
+=== fm-control.sh agy-control-x1 exit ===
+error: task agy-control-x1 records harness 'agy', which has no verified control mechanics; fm-control refuses to guess an interrupt key or exit command
+exit=1
+=== fm-control.sh agy-control-x1 relaunch ===
+error: task agy-control-x1 records harness 'agy', which has no verified control mechanics; fm-control refuses to guess an interrupt key or exit command
+exit=1

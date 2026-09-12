@@ -1,0 +1,22 @@
+BYPASS rc=0 meta=yes raw=[sh -c "$(printf agy) -p hello"]
+   toolcalls: tmux display-message -p #S|tmux list-windows -t firstmate -F #{window_name}|tmux new-window -dP -F #{window_id} -t firstmate: -n fm-agy-probe-1-x1 -c /tmp/agy-probe-work/probe-1/project|tmux set-window-option -t  automatic-rename off|tmux set-window-option -t  allow-rename off|tmux send-keys -t firstmate:fm-agy-probe-1-x1 treehouse get Enter|tmux display-message -p -t firstmate:fm-agy-probe-1-x1 #
+   out: warning: /tmp/agy-probe-work/probe-1/home/data/agy-probe-1-x1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches|spawned agy-probe-1-x1 harness=sh kind=ship mode=no-mistakes yolo=off window=firstmate:fm-agy-probe-1-x1 worktree=/tmp/agy-probe-work/probe-1/wt
+BYPASS rc=0 meta=yes raw=[A=agy; $A -p hello]
+   toolcalls: tmux display-message -p #S|tmux list-windows -t firstmate -F #{window_name}|tmux new-window -dP -F #{window_id} -t firstmate: -n fm-agy-probe-2-x1 -c /tmp/agy-probe-work/probe-2/project|tmux set-window-option -t  automatic-rename off|tmux set-window-option -t  allow-rename off|tmux send-keys -t firstmate:fm-agy-probe-2-x1 treehouse get Enter|tmux display-message -p -t firstmate:fm-agy-probe-2-x1 #
+   out: warning: /tmp/agy-probe-work/probe-2/home/data/agy-probe-2-x1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches|spawned agy-probe-2-x1 harness=$A kind=ship mode=no-mistakes yolo=off window=firstmate:fm-agy-probe-2-x1 worktree=/tmp/agy-probe-work/probe-2/wt
+BYPASS rc=0 meta=yes raw=[A=agy; env $A -p hello]
+   toolcalls: tmux display-message -p #S|tmux list-windows -t firstmate -F #{window_name}|tmux new-window -dP -F #{window_id} -t firstmate: -n fm-agy-probe-3-x1 -c /tmp/agy-probe-work/probe-3/project|tmux set-window-option -t  automatic-rename off|tmux set-window-option -t  allow-rename off|tmux send-keys -t firstmate:fm-agy-probe-3-x1 treehouse get Enter|tmux display-message -p -t firstmate:fm-agy-probe-3-x1 #
+   out: warning: /tmp/agy-probe-work/probe-3/home/data/agy-probe-3-x1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches|spawned agy-probe-3-x1 harness=env kind=ship mode=no-mistakes yolo=off window=firstmate:fm-agy-probe-3-x1 worktree=/tmp/agy-probe-work/probe-3/wt
+BYPASS rc=0 meta=yes raw=[${AGY:-agy} -p hello]
+   toolcalls: tmux display-message -p #S|tmux list-windows -t firstmate -F #{window_name}|tmux new-window -dP -F #{window_id} -t firstmate: -n fm-agy-probe-4-x1 -c /tmp/agy-probe-work/probe-4/project|tmux set-window-option -t  automatic-rename off|tmux set-window-option -t  allow-rename off|tmux send-keys -t firstmate:fm-agy-probe-4-x1 treehouse get Enter|tmux display-message -p -t firstmate:fm-agy-probe-4-x1 #
+   out: warning: /tmp/agy-probe-work/probe-4/home/data/agy-probe-4-x1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches|spawned agy-probe-4-x1 harness=${AGY:-agy} kind=ship mode=no-mistakes yolo=off window=firstmate:fm-agy-probe-4-x1 worktree=/tmp/agy-probe-work/probe-4/wt
+REFUSED rc=1 meta=no raw=[agy -p hello]
+   toolcalls: 
+REFUSED rc=1 meta=no raw=[env FOO=bar agy -p hello]
+   toolcalls: 
+BYPASS rc=0 meta=yes raw=[(agy -p hello)]
+   launched-cmd: tmux send-keys -t firstmate:fm-agy-probe2-1-x1 -l (agy -p hello)|
+BYPASS rc=0 meta=yes raw=[AGYBIN=agy; exec $AGYBIN -p hello]
+   launched-cmd: tmux send-keys -t firstmate:fm-agy-probe2-2-x1 -l AGYBIN=agy; exec $AGYBIN -p hello|
+BLOCKED-OTHER rc=1 meta=no raw=[x=$(command -v agy); "$x" -p hello]
+   launched-cmd: 

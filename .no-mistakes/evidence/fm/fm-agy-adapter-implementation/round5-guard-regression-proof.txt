@@ -1,0 +1,11 @@
+command                            parent    HEAD      verdict
+a"g"y -p hello                     ALLOW     REFUSE    ok
+a'g'y -p hello                     ALLOW     REFUSE    ok
+a\gy -p hello                      ALLOW     REFUSE    ok
+$(printf 'a''g''y') -p hello       ALLOW     REFUSE    ok
+(agy -p hello)                     REFUSE    REFUSE    ok(parent-also-refused)
+A=agy; $A -p hello                 REFUSE    REFUSE    ok(parent-also-refused)
+${AGY:-agy} -p hello               REFUSE    REFUSE    ok(parent-also-refused)
+agy -p hello                       REFUSE    REFUSE    ok(parent-also-refused)
+env FOO=bar agy -p hello           REFUSE    REFUSE    ok(parent-also-refused)
+RESULT: HEAD refuses every statically detectable form (regression restored)

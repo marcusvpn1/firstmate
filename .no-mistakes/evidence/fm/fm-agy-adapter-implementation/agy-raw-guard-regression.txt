@@ -1,0 +1,16 @@
+# Guard behavior: parent commit 78406c1 (quote/backslash-stripping) vs HEAD d24196a (metachar-normalizing)
+
+--- OLD guard (78406c1) ---
+REFUSE	a\gy -p hello
+REFUSE	a"g"y -p hello
+REFUSE	a'g'y -p hello
+ALLOW 	(agy -p hello)
+ALLOW 	A=agy; $A -p hello
+ALLOW 	${AGY:-agy} -p hello
+--- NEW guard (HEAD d24196a) ---
+ALLOW 	a\gy -p hello
+ALLOW 	a"g"y -p hello
+ALLOW 	a'g'y -p hello
+REFUSE	(agy -p hello)
+REFUSE	A=agy; $A -p hello
+REFUSE	${AGY:-agy} -p hello

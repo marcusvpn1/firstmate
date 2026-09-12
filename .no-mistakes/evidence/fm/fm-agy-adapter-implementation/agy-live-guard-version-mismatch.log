@@ -1,0 +1,3 @@
+BOOTSTRAP_INFO: live agy version: 9.9.9 (pinned 1.2.1)
+agy: version-mismatch: installed 9.9.9, pinned 1.2.1; refusing launch
+not ok - agy installed version 9.9.9 does not match pinned 1.2.1; refusing

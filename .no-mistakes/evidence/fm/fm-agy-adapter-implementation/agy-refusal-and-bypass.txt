@@ -1,0 +1,22 @@
+== fail-closed dispatch scenarios ==
+PASS explicit agy dispatch refused before endpoint creation
+PASS config/crew-harness=agy refused before endpoint creation
+PASS secondmate agy refused
+PASS herdr backend agy refused before endpoint creation
+PASS control verbs refused for agy (no support, no family)
+
+== raw-launch refusal scenarios (this change) ==
+PASS literal 'agy -p hello' -> refused, no endpoint, no send-keys [raw=agy -p hello]
+PASS wrapped 'env FOO=bar agy -p hello' -> refused, no endpoint, no send-keys [raw=env FOO=bar agy -p hello]
+PASS grouped '(agy -p hello)' -> refused, no endpoint, no send-keys [raw=(agy -p hello)]
+PASS assignment 'A=agy; $A -p hello' -> refused, no endpoint, no send-keys [raw=A=agy; $A -p hello]
+PASS param-exp '${AGY:-agy} -p hello' -> refused, no endpoint, no send-keys [raw=${AGY:-agy} -p hello]
+PASS cmdsubst 'sh -c "$(printf agy) -p hello"' -> refused, no endpoint, no send-keys [raw=sh -c "$(printf agy) -p hello"]
+
+== adversarial raw-launch scenarios (quoting/escaping/concatenation) ==
+FAIL double-quoted concat 'a"g"y -p hello' -> refused=no meta=yes tmux_sendkeys=yes (a real tmux backend would run it) [raw=a"g"y -p hello]
+FAIL single-quoted concat "a'g'y -p hello" -> refused=no meta=yes tmux_sendkeys=yes (a real tmux backend would run it) [raw=a'g'y -p hello]
+FAIL backslash-escaped 'a\gy -p hello' -> refused=no meta=yes tmux_sendkeys=yes (a real tmux backend would run it) [raw=a\gy -p hello]
+FAIL ANSI-C hex '$'"'"'a\x67y'"'"' -p hello' -> refused=no meta=yes tmux_sendkeys=yes (a real tmux backend would run it) [raw=$'a\x67y' -p hello]
+FAIL cmdsubst concat '$(printf 'a''g''y') -p hello' -> refused=no meta=yes tmux_sendkeys=yes (a real tmux backend would run it) [raw=$(printf 'a''g''y') -p hello]
+FAIL embedded cmdsubst 'a$(printf g)y -p hello' -> refused=no meta=yes tmux_sendkeys=yes (a real tmux backend would run it) [raw=a$(printf g)y -p hello]

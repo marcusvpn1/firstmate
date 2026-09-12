@@ -1,0 +1,21 @@
+=== agy.md (lines 1-5, 38-40, 54-58) ===
+# Agy CLI
+
+EXPERIMENTAL and unverified.
+Not added to the verified adapter list, and refused by normal dispatch in every form (explicit `fm-spawn ... agy`, `config/crew-harness`, secondmate, and every statically detectable spelling of the raw launch escape hatch), so no dispatch path statically resolved to agy reaches a launch. The only sanctioned execution is the opt-in live guard (`tests/fm-agy-live-e2e.test.sh`, `FM_AGY_LIVE=1`), which invokes the binary directly under the PG4 ambient-secret scrub and validates its result.
+
+
+`bin/fm-spawn.sh` refuses every agy launch before endpoint creation (explicit selection, `config/crew-harness`, secondmate, and the statically detectable spellings of the raw launch escape hatch all fail closed), so no dispatch reaches a launch template.
+The launch template is owned by `../../../bin/fm-agy-lib.sh` as the documented reference shape (exercised by the portable template-contract test and the live guard's shape, not by dispatch), so the command shape, the `-p=` fix, and the result contract have one owner.
+1. **Scrubbed launch environment.** `fm_agy_env_scrub_code` unsets the named ambient secrets (`STITCH_X_GOOG_API_KEY`, `STITCH_API_KEY`, `ANTHROPIC_API_KEY`, `APIFY_API_KEY`, `HF_TOKEN`) plus every other `*_API_KEY` / `*_TOKEN` / `*_SECRET` var in the pane shell before agy runs, so no ambient credential reaches agy's MCP children. The operator's own shell (and the Stitch MCP server it feeds) is untouched.
+2. **Unverified MCP sandbox.** Agy's MCP children are treated as network-unrestricted: their `--sandbox` behavior is unverified, so no permission proof exists for their network or home access.
+3. **Statically detectable raw-launch refusal only.** The raw-launch guard scans the literal command text. It refuses agy spelled directly, wrapped behind `env`/`command`/`nohup`/`sh -c`, in another letter case, assembled from quoted or backslash-escaped fragments (`a"g"y`, `a'g'y`, `a\gy`), or fused with grouping/assignment/parameter-expansion/command-substitution syntax that still contains a literal `agy` (`(agy ...)`, `A=agy; $A`, `${AGY:-agy}`, `$(printf agy)`). A command that computes the executable name at runtime from characters that never appear contiguously (for example `$'a\x67y'` or `a$(printf g)y`) cannot be resolved by a static scan and is outside that guarantee. The raw-launch escape hatch is a generic arbitrary-command mechanism; it must not be used to launch agy.
+
+The real-binary result schema, version pin, and the PG4 ambient-secret scrub are exercised by the opt-in live guard on agy 1.2.1 (`../../../docs/verification/runtime-backends.md`); the earlier end-to-end Hello World spawn is recorded there as historical proof-gate evidence, but normal dispatch is now refused, so the live guard is the only sanctioned execution.
+
+=== runtime-backends.md (lines 1506-1510) ===
+## Agy
+
+EXPERIMENTAL and unverified; not in the verified adapter list and refused by normal dispatch everywhere — `bin/fm-spawn.sh` refuses every agy dispatch (explicit, `config/crew-harness`, secondmate, and every statically detectable spelling of the raw launch escape hatch), `bin/fm-bootstrap.sh` excludes it from the verified allowlist, and `bin/fm-quota-choose.sh` rejects it (no provider family).
+The raw-launch guard scans the literal command text: it refuses agy spelled directly, wrapped, in another letter case, assembled from quoted or backslash-escaped fragments, or fused with grouping/assignment/parameter-expansion/command-substitution syntax containing a literal `agy`. A command that computes the executable name at runtime from characters that never appear contiguously (`$'a\x67y'`, `a$(printf g)y`) is not resolved by that static scan and is outside the guarantee; the escape hatch is a generic arbitrary-command mechanism and must not be used to launch agy.
+The observations here were produced on 2026-09-11 against agy 1.2.1 (`~/.local/bin/agy`, a Go binary) on macOS arm64.

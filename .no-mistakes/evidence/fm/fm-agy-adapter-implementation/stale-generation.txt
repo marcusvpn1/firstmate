@@ -1,0 +1,8 @@
+stale=/tmp/fm-manual-stale-98046/result-gen-old.json
+cur=/tmp/fm-manual-stale-98046/result-gen-new.json
+distinct-paths=yes
+validate-ok
+current-validated=yes
+current-mode=644
+stale-retired=yes
+current-retired=yes

@@ -1,0 +1,25 @@
+S1 explicit positional rc=1 out=[error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.]
+S1 PASS
+S2 --harness agy rc=1 out=[error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.]
+S2 PASS
+S3 config agy rc=1 out=[error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.]
+S3 PASS
+S4 secondmate agy rc=1 out=[error: agy is an experimental, unverified adapter and is refused by normal dispatch; it has no verified control, liveness, or result-consumption path. Select a verified harness.]
+S4 PASS
+S5 raw PASS  raw=[agy -p hello] rc=1 meta=no launched=[]
+S5 raw PASS  raw=[env FOO=bar agy -p hello] rc=1 meta=no launched=[]
+S5 raw PASS  raw=[command agy -p hello] rc=1 meta=no launched=[]
+S5 raw PASS  raw=[nohup agy -p hello] rc=1 meta=no launched=[]
+S5 raw PASS  raw=[sh -c 'agy -p hello'] rc=1 meta=no launched=[]
+S5 raw PASS  raw=[AGY -p hello] rc=1 meta=no launched=[]
+S5 raw PASS  raw=[env FOO=bar AGY -p hello] rc=1 meta=no launched=[]
+S5 raw PASS  raw=[/usr/local/bin/agy -p hello] rc=1 meta=no launched=[]
+S5 raw PASS  raw=[env FOO=bar /usr/local/bin/agy -p hello] rc=1 meta=no launched=[]
+S5 raw PASS  raw=["agy" -p hello] rc=1 meta=no launched=[]
+S5 raw PASS  raw=[bash -c "agy -p hello"] rc=1 meta=no launched=[]
+S5 raw PASS  raw=[bash -c agy] rc=1 meta=no launched=[]
+S7 backend=herdr PASS rc=1
+S7 backend=zellij PASS rc=1
+S7 backend=cmux PASS rc=1
+S7 backend=orca FAIL rc=1 out=[error: backend=orca selected but the 'orca' CLI is not installed]
+TOTALS pass=19 fail=1
