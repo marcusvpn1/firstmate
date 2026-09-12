@@ -1625,6 +1625,29 @@ refuse_agy() {
   exit 1
 }
 
+# True when a raw launch command names the exact agy executable in any command
+# word, including when it is wrapped behind a launcher (`env FOO=bar agy ...`,
+# `command agy ...`, `nohup agy ...`, `sh -c 'agy ...'`). The first-word harness
+# derivation above cannot see through a wrapper, so agy's raw-launch refusal
+# must inspect every word. Quote and escape characters are stripped so the
+# wrapped forms are visible. This is deliberately over-eager: any literal `agy`
+# word (or path ending in /agy) refuses, because the refusal is fail-closed and
+# the escape hatch is for unverified adapters, not a place to spell agy as an
+# argument. Globbing is disabled so a file named `agy` cannot expand into a
+# false refusal.
+raw_command_invokes_agy() {
+  local word candidate
+  set -f
+  for word in $1; do
+    candidate=${word//[\'\"\\]/}
+    case "${candidate##*/}" in
+      agy) set +f; return 0 ;;
+    esac
+  done
+  set +f
+  return 1
+}
+
 case "$ARG3" in
   *' '*)  # raw launch command (unverified-adapter escape hatch)
     RAW_LAUNCH=1
@@ -1702,10 +1725,11 @@ fi
 
 # agy (Agy CLI) is an EXPERIMENTAL, unverified one-shot adapter. The `''` and
 # explicit-arg branches above already refuse it via refuse_agy before the launch
-# template lookup, so this block is the raw-launch escape-hatch guard: a raw
-# `agy ...` command (whose first word resolves to agy) is refused here too,
-# rather than bypassing the refusal by naming agy as the first word.
-if [ "$HARNESS" = agy ]; then
+# template lookup. This block is the raw-launch escape-hatch guard: a raw command
+# that names agy in any word (its first word, or wrapped behind env/command/
+# nohup/sh -c) is refused here too, rather than bypassing the refusal by hiding
+# agy behind a helper.
+if [ "$HARNESS" = agy ] || { [ "$RAW_LAUNCH" -eq 1 ] && raw_command_invokes_agy "$LAUNCH"; }; then
   refuse_agy
 fi
 
