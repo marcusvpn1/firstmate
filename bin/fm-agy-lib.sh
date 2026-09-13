@@ -28,7 +28,7 @@
 #   direct subprocess, not through a runtime backend.
 # - One-shot: completion is proven only by a validated result artifact, never
 #   by exit code alone and never by rendered spinner text.
-# - Result publication: bounded, atomic, task-owned, and generation-bound
+# - Result publication: bounded, atomic, private, task-owned, and generation-bound
 #   (fm_agy_publish_result / fm_agy_result_file); exercised by the live guard
 #   and the portable test suite, never by a production dispatch.
 # - Version: exact pin (FM_AGY_PINNED_VERSION, default 1.2.2). The live guard
@@ -172,8 +172,12 @@ fm_agy_ensure_result_dir() {  # <task_id>
 # agy is refused before it can reach a launch). The prompt is attached to -p
 # with `=` so the flag does NOT swallow the next flag as its prompt (the
 # "dashline" bug), and stdout is redirected through a per-generation temp file
-# that is atomically renamed on completion. The template deliberately does NOT
-# end in `exit $rc`: an `exit` would destroy the pane shell and turn a finished
+# that is atomically renamed on completion. The emitted `umask 077` MUST precede
+# that redirect so the in-progress result and log are created private (mode 600);
+# a rename plus post-hoc chmod alone would leave the partial artifact
+# world-readable (regression: tests/fm-agy-harness.test.sh,
+# test_agy_launch_template_protects_partial_artifact). The template deliberately
+# does NOT end in `exit $rc`: an `exit` would destroy the pane shell and turn a finished
 # task's endpoint `missing` rather than `dead`, breaking relaunch. Completion
 # is proven only by the validated result artifact, never by the shell exit
 # status.
@@ -366,8 +370,12 @@ fm_agy_terminate() {  # <target>
 # ---- cleanup --------------------------------------------------------------
 
 # Remove this task's agy artifacts (result, log, temp) without ever deleting a
-# path outside the task-owned directory. The directory itself is left to the
-# task cleanup owner; only the adapter's own files are retired here.
+# path outside the task-owned directory. The `result-*.json.tmp*` glob is
+# deliberately broad enough to retire both partial shapes - the launch
+# template's `result-<gen>.json.tmp` and fm_agy_publish_result's
+# `result-<gen>.json.tmp.<pid>` - so no partial artifact survives cleanup.
+# The directory itself is left to the task cleanup owner; only the adapter's
+# own files are retired here.
 fm_agy_cleanup() {  # <task_id>
   local task_id=$1 dir
   dir=$(fm_agy_result_dir "$task_id") || return 1
