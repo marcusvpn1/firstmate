@@ -176,7 +176,7 @@ fm_backend_tmux_classify_process_name() {  # <path> [argv0] -> agent|shell|other
     # name is the bare word `omp` (verified, omp 18.1.11) and a glob would claim
     # unrelated commands such as ompd or comp.
     # agy is anchored like pi/omp/kimi: its live process name is the exact word
-    # `agy` (verified 1.2.1), and a glob would claim unrelated commands carrying
+    # `agy` (verified 1.2.2), and a glob would claim unrelated commands carrying
     # the fragment.
     *claude*|*codex*|*opencode*|*grok*|*kimi*|*rovo*|pi|pi-signed|pi-launcher|Pi|omp|agy) printf 'agent' ;;
     zsh|bash|sh|dash|ash|ksh|mksh|tcsh|csh|fish) printf 'shell' ;;

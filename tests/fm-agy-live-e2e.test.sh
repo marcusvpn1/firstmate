@@ -37,9 +37,9 @@ AGY_BIN=$(command -v agy 2>/dev/null || true)
 [ -x "${AGY_BIN:-}" ] || fail "FM_AGY_LIVE=1 but no real agy executable is installed"
 
 VERSION_OUT=$(fm_agy_version 2>&1 || true)
-echo "BOOTSTRAP_INFO: live agy version: ${VERSION_OUT:-unknown} (pinned ${FM_AGY_PINNED_VERSION:-1.2.1})"
+echo "BOOTSTRAP_INFO: live agy version: ${VERSION_OUT:-unknown} (pinned ${FM_AGY_PINNED_VERSION:-1.2.2})"
 if ! fm_agy_version_pinned; then
-  fail "agy installed version ${VERSION_OUT:-unknown} does not match pinned ${FM_AGY_PINNED_VERSION:-1.2.1}; refusing"
+  fail "agy installed version ${VERSION_OUT:-unknown} does not match pinned ${FM_AGY_PINNED_VERSION:-1.2.2}; refusing"
 fi
 
 LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-agy-live.XXXXXX") || fail "could not create the isolated Agy lab"

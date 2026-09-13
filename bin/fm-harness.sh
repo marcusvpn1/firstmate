@@ -162,7 +162,7 @@ detect_own() {
       # args glob would otherwise claim it if that subtree were ever walked.
       omp) echo omp; return ;;
       # agy (Agy CLI) is an EXPERIMENTAL, unverified harness. Its live process
-      # name is the exact word `agy` (verified 1.2.1), so the match is anchored
+      # name is the exact word `agy` (verified 1.2.2), so the match is anchored
       # like `pi`/`omp`/`kimi`: a `*agy*` glob would also claim unrelated
       # commands carrying the fragment in their name. Detection alone never
       # authorizes a launch; bin/fm-spawn.sh refuses the unverified adapter.

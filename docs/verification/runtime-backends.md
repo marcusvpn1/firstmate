@@ -1507,7 +1507,7 @@ A throwaway scout was spawned through `bin/fm-spawn.sh --scout --harness omp --m
 
 EXPERIMENTAL and unverified; not in the verified adapter list and refused by normal dispatch everywhere — `bin/fm-spawn.sh` refuses every agy dispatch (explicit, `config/crew-harness`, secondmate, and every statically detectable spelling of the raw launch escape hatch), `bin/fm-bootstrap.sh` excludes it from the verified allowlist, and `bin/fm-quota-choose.sh` rejects it (no provider family).
 The raw-launch guard scans the literal command text: it refuses agy spelled directly, wrapped, in another letter case, assembled from quoted or backslash-escaped fragments, or fused with grouping/assignment/parameter-expansion/command-substitution syntax containing a literal `agy`. A command that computes the executable name at runtime from characters that never appear contiguously (`$'a\x67y'`, `a$(printf g)y`) is not resolved by that static scan and is outside the guarantee; the escape hatch is a generic arbitrary-command mechanism and must not be used to launch agy.
-The observations here were produced on 2026-09-11 against agy 1.2.1 (`~/.local/bin/agy`, a Go binary) on macOS arm64.
+The current observations were produced on 2026-09-13 against agy 1.2.2 (`~/.local/bin/agy`, a Go binary) on macOS arm64.
 
 ### Result schema
 
@@ -1563,5 +1563,5 @@ The captain's 2026-09-11 decision closes the permission-boundary gap by scrubbin
 1. **Scrubbed launch environment.** `fm_agy_env_scrub_code` unsets `STITCH_X_GOOG_API_KEY`, `STITCH_API_KEY`, `ANTHROPIC_API_KEY`, `APIFY_API_KEY`, `HF_TOKEN`, and every other `*_API_KEY` / `*_TOKEN` / `*_SECRET` var in the pane shell before agy runs, so agy's MCP children never inherit ambient credentials. The operator's own shell (which feeds the Stitch MCP server) is untouched.
 2. **Unverified MCP sandbox.** agy's MCP children are treated as network-unrestricted: their `--sandbox` behavior is unverified, so no permission proof exists for their network or home access.
 
-The env scrub is verified by a portable behavior test (`tests/fm-agy-harness.test.sh`) that proves the emitted fragment removes every secret-patterned var while preserving unrelated vars, and is applied by the live guard before it execs agy on agy 1.2.1.
+The env scrub is verified by a portable behavior test (`tests/fm-agy-harness.test.sh`) that proves the emitted fragment removes every secret-patterned var while preserving unrelated vars, and is applied by the live guard before it execs agy on agy 1.2.2.
 agy also reads `~/.gemini/antigravity-cli` state and, without `--add-dir`, writes files into `~/.gemini/antigravity-cli/scratch/` instead of the task worktree; `--add-dir` remains load-bearing for worktree writes.
