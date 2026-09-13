@@ -20,7 +20,7 @@
 # writes one JSON result object to stdout, and exits. There is no interactive
 # TUI, no turn-end hook, and no data-plane steering.
 #
-# Contract (observed against agy 1.2.1, 2026-09-11):
+# Contract (observed against agy 1.2.2, 2026-09-13):
 # - Kind: none by normal dispatch (refused for every kind); the live guard
 #   exercises a one-shot print run only.
 # - Backend: normal dispatch refuses every backend (tmux included) before
@@ -31,7 +31,7 @@
 # - Result publication: bounded, atomic, task-owned, and generation-bound
 #   (fm_agy_publish_result / fm_agy_result_file); exercised by the live guard
 #   and the portable test suite, never by a production dispatch.
-# - Version: exact pin (FM_AGY_PINNED_VERSION, default 1.2.1). The live guard
+# - Version: exact pin (FM_AGY_PINNED_VERSION, default 1.2.2). The live guard
 #   refuses a mismatch; it is never a warning.
 # - Environment scrub: the launch template unsets the named ambient secrets
 #   (STITCH_X_GOOG_API_KEY, STITCH_API_KEY, ANTHROPIC_API_KEY, APIFY_API_KEY,
@@ -41,7 +41,7 @@
 #   The operator's own shell (and the Stitch MCP server it feeds)
 #   is untouched: the unset happens only in the pane shell.
 #
-# Result schema (the real `--output-format json` object, observed 1.2.1):
+# Result schema (the real `--output-format json` object, observed 1.2.2):
 #   {
 #     "conversation_id": string,          # "" before a conversation starts
 #     "status": "SUCCESS" | "ERROR",      # uppercase terminal status
@@ -65,7 +65,7 @@ set -u
 
 # The exact version this adapter was verified against. Override only with a
 # version that has been verified end to end; a different value refuses launch.
-FM_AGY_PINNED_VERSION=${FM_AGY_PINNED_VERSION:-1.2.1}
+FM_AGY_PINNED_VERSION=${FM_AGY_PINNED_VERSION:-1.2.2}
 # Hard cap on the published result artifact, in bytes.
 FM_AGY_RESULT_MAX_BYTES=${FM_AGY_RESULT_MAX_BYTES:-1048576}
 
@@ -95,7 +95,7 @@ fm_agy_version() {
 # launch. The prior "warn but continue" behavior is gone: an unverified version
 # must not be launched.
 fm_agy_version_pinned() {
-  local pinned=${FM_AGY_PINNED_VERSION:-1.2.1} current
+  local pinned=${FM_AGY_PINNED_VERSION:-1.2.2} current
   current=$(fm_agy_version)
   if [ "$current" = "$pinned" ]; then
     printf 'agy: version-ok %s\n' "$current"
@@ -197,7 +197,7 @@ fm_agy_env_scrub_code() {
 
 fm_agy_launch_template() {
   # shellcheck disable=SC2016 # template literal: placeholders expand in the pane
-  printf '%s%s' "$(fm_agy_env_scrub_code)" 'agy --output-format json --dangerously-skip-permissions --add-dir __WORKTREE__ __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ -p="$(__OPINPUT__ encode launch-brief < __BRIEF__)" > __AGYRESULT__.tmp; mv -f __AGYRESULT__.tmp __AGYRESULT__; chmod 600 __AGYRESULT__ 2>/dev/null'
+  printf '%s%s' "$(fm_agy_env_scrub_code)" 'umask 077; agy --output-format json --dangerously-skip-permissions --add-dir __WORKTREE__ __MODELFLAG____EFFORTFLAG__--print-timeout ${FM_AGY_PRINT_TIMEOUT:-600}s --log-file __AGYLOGFILE__ -p="$(__OPINPUT__ encode launch-brief < __BRIEF__)" > __AGYRESULT__.tmp; mv -f __AGYRESULT__.tmp __AGYRESULT__; chmod 600 __AGYRESULT__ 2>/dev/null'
 }
 
 # ---- result publication ---------------------------------------------------
@@ -229,7 +229,7 @@ fm_agy_publish_result() {  # <result_file> <raw_json>
 
 # ---- validation -----------------------------------------------------------
 
-# fm_agy_validate_result: strict validation against the observed 1.2.1 schema.
+# fm_agy_validate_result: strict validation against the observed 1.2.2 schema.
 # Rejects a missing/empty/oversized file, malformed JSON, unknown top-level or
 # usage keys, wrong types, and an unknown terminal status. jq is required; its
 # absence fails explicitly rather than silently accepting.
@@ -371,7 +371,7 @@ fm_agy_terminate() {  # <target>
 fm_agy_cleanup() {  # <task_id>
   local task_id=$1 dir
   dir=$(fm_agy_result_dir "$task_id") || return 1
-  rm -f "$dir"/result-*.json "$dir"/result-*.json.tmp.* "$dir"/agy-*.log 2>/dev/null || true
+  rm -f "$dir"/result-*.json "$dir"/result-*.json.tmp* "$dir"/agy-*.log 2>/dev/null || true
 }
 
 # ---- harness registration -------------------------------------------------

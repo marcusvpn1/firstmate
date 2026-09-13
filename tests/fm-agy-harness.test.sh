@@ -25,11 +25,11 @@ TMP_ROOT=$(fm_test_tmproot fm-agy-harness)
 PYTHON_BIN=$(command -v python3) || fail "test needs python3"
 PYTHON_BIN_DIR=$(dirname "$PYTHON_BIN")
 BASE_PATH=${FM_TEST_BASE_PATH:-$PYTHON_BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin}
-PINNED_VERSION="1.2.1"
+PINNED_VERSION="1.2.2"
 
 # ---- helpers --------------------------------------------------------------
 
-# A valid real-schema result object (observed agy 1.2.1).
+# A valid real-schema result object (observed agy 1.2.2).
 agy_result_json() {  # <status>
   local status=$1 err=''
   if [ "$status" = ERROR ]; then
@@ -46,14 +46,14 @@ test_agy_detect_finds_installed_binary() {
   fakebin=$(fm_fakebin "$TMP_ROOT/detect-ok")
   cat > "$fakebin/agy" <<'SH'
 #!/usr/bin/env bash
-printf '1.2.1\n'
+printf '1.2.2\n'
 SH
   chmod +x "$fakebin/agy"
 
   rc=0
   out=$(PATH="$fakebin:$BASE_PATH" bash -c '. "$1"; fm_agy_detect' _ "$AGY_LIB" 2>&1) || rc=$?
   expect_code 0 "$rc" "agy_detect failed on a found binary"
-  assert_contains "$out" "1.2.1" "agy_detect did not report version"
+  assert_contains "$out" "1.2.2" "agy_detect did not report version"
   pass "agy_detect finds and reports the installed version"
 }
 
@@ -73,7 +73,7 @@ test_agy_version_pinned_accepts_match() {
   fakebin=$(fm_fakebin "$TMP_ROOT/version-match")
   cat > "$fakebin/agy" <<'SH'
 #!/usr/bin/env bash
-printf '1.2.1\n'
+printf '1.2.2\n'
 SH
   chmod +x "$fakebin/agy"
 
@@ -167,6 +167,7 @@ test_agy_launch_template_contract() {
   assert_contains "$out" 'chmod 600 __AGYRESULT__' "template missing private-mode chmod"
   assert_contains "$out" 'unset STITCH_X_GOOG_API_KEY STITCH_API_KEY ANTHROPIC_API_KEY APIFY_API_KEY HF_TOKEN' "template missing the ambient-secret scrub"
   assert_contains "$out" '_API_KEY' "template missing the wildcard secret-pattern scrub"
+  assert_contains "$out" 'umask 077' "template does not protect partial result and log artifacts"
   if printf '%s' "$out" | grep -q -- '-p '; then
     fail "template still uses the bare -p flag (the dashline bug)"
   fi
@@ -382,16 +383,20 @@ test_agy_denied_actions_not_success() {
 # ---- cleanup --------------------------------------------------------------
 
 test_agy_cleanup_removes_result_artifacts() {
-  local dir task_id f
+  local dir task_id f tmp
   task_id=cleanup-test-01
   dir=$(bash -c '. "$1"; fm_agy_ensure_result_dir "$2"' _ "$AGY_LIB" "$task_id")
   f=$(bash -c '. "$1"; fm_agy_result_file "$2" g1' _ "$AGY_LIB" "$task_id")
+  tmp="${f}.tmp"
   printf '{"status":"SUCCESS"}\n' > "$f"
+  printf 'partial\n' > "$tmp"
   assert_present "$f" "result file not created"
+  assert_present "$tmp" "partial result file not created"
 
   bash -c '. "$1"; fm_agy_cleanup "$2"' _ "$AGY_LIB" "$task_id"
   assert_absent "$f" "result file survived cleanup"
-  pass "cleanup removes the task's agy result artifacts"
+  assert_absent "$tmp" "partial result file survived cleanup"
+  pass "cleanup removes the task's agy result and partial artifacts"
 }
 
 # ---- liveness -------------------------------------------------------------
