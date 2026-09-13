@@ -167,7 +167,6 @@ test_agy_launch_template_contract() {
   assert_contains "$out" 'chmod 600 __AGYRESULT__' "template missing private-mode chmod"
   assert_contains "$out" 'unset STITCH_X_GOOG_API_KEY STITCH_API_KEY ANTHROPIC_API_KEY APIFY_API_KEY HF_TOKEN' "template missing the ambient-secret scrub"
   assert_contains "$out" '_API_KEY' "template missing the wildcard secret-pattern scrub"
-  assert_contains "$out" 'umask 077' "template does not protect partial result and log artifacts"
   if printf '%s' "$out" | grep -q -- '-p '; then
     fail "template still uses the bare -p flag (the dashline bug)"
   fi
@@ -175,6 +174,52 @@ test_agy_launch_template_contract() {
     fail "template still ends the pane shell with 'exit' (destroys the endpoint)"
   fi
   pass "launch template fixes the -p flag, redirects to a generation-bound temp file, and scrubs ambient secrets"
+}
+
+# The template must make the partial artifact private at creation time, not
+# only chmod the renamed final file: a reader (or another process) can see
+# `$result.json.tmp` between the redirect and the atomic rename. This drives
+# the emitted template with a stubbed agy that records the mode of its own
+# redirected stdout while it still exists, so it fails if `umask 077` is
+# missing or runs after the redirect.
+test_agy_launch_template_protects_partial_artifact() {
+  local dir result worktree brief fakebin template mode out rc
+  dir="$TMP_ROOT/template-privacy"
+  result="$dir/result.json"
+  worktree="$dir/worktree"
+  brief="$dir/brief.md"
+  mkdir -p "$worktree"
+  printf 'do the thing\n' > "$brief"
+
+  fakebin=$(fm_fakebin "$dir/fake")
+  cat > "$fakebin/agy" <<SH
+#!/usr/bin/env bash
+{ stat -c '%a' "$result.tmp" 2>/dev/null || stat -f '%Lp' "$result.tmp"; } > "$dir/partial-mode"
+printf '{"status":"SUCCESS"}\n'
+SH
+  cat > "$fakebin/opinput" <<'SH'
+#!/usr/bin/env bash
+printf 'encoded-brief\n'
+SH
+  chmod +x "$fakebin/agy" "$fakebin/opinput"
+
+  template=$(bash -c '. "$1"; fm_agy_launch_template' _ "$AGY_LIB")
+  template=${template//__WORKTREE__/$worktree}
+  template=${template//__BRIEF__/$brief}
+  template=${template//__OPINPUT__/opinput}
+  template=${template//__AGYRESULT__/$result}
+  template=${template//__AGYLOGFILE__/$dir/agy.log}
+  template=${template//__MODELFLAG__/}
+  template=${template//__EFFORTFLAG__/}
+
+  rc=0
+  out=$(PATH="$fakebin:$BASE_PATH" FM_AGY_PRINT_TIMEOUT=600 bash -c "$template" 2>&1) || rc=$?
+  expect_code 0 "$rc" "the emitted launch template failed to run"
+  assert_present "$result" "the emitted launch template did not publish a result"
+  mode=$(cat "$dir/partial-mode" 2>/dev/null || true)
+  [ "$mode" = 600 ] || fail "partial result artifact was created with mode '$mode', not 600: $out"
+  [ "$(stat -c '%a' "$result" 2>/dev/null || stat -f '%Lp' "$result")" = 600 ] || fail "published result artifact is not private"
+  pass "the launch template creates the partial result artifact private (600) before agy writes it"
 }
 
 test_agy_env_scrub_removes_secrets_preserves_others() {
@@ -762,6 +807,7 @@ test_agy_auth_status_failed
 test_agy_result_file_binds_generation
 test_agy_result_file_refuses_unsafe_task_id
 test_agy_launch_template_contract
+test_agy_launch_template_protects_partial_artifact
 test_agy_env_scrub_removes_secrets_preserves_others
 test_agy_publish_result_atomic
 test_agy_publish_result_rejects_empty
