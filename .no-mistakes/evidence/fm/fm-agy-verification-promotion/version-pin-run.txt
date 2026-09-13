@@ -1,0 +1,15 @@
+=== installed real binary version ===
+1.2.2
+
+=== default pin accepts the real installed 1.2.2 ===
+default pin=1.2.2
+agy: version-ok 1.2.2
+rc=0
+
+=== fail-closed: stale pin 1.2.1 refuses the real 1.2.2 binary (adversarial) ===
+agy: version-mismatch: installed 1.2.2, pinned 1.2.1; refusing launch
+rc=1
+
+=== fail-closed: drifted 9.9.9 binary against the 1.2.2 pin (adversarial) ===
+agy: version-mismatch: installed 9.9.9, pinned 1.2.2; refusing launch
+rc=1

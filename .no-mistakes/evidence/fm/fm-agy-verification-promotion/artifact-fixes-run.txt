@@ -1,0 +1,28 @@
+work=/tmp/fm-agy-evidence.eAIzz2
+
+=== SCENARIO 1: partial result artifact privacy (fix present) ===
+template prefix: unset STITCH_X_GOOG_API_KEY STITCH_API_K...
+partial mode observed by agy while writing: rc=0
+600
+published final artifact mode: 600
+
+=== SCENARIO 1-ADVERSARIAL: same template with 'umask 077; ' removed ===
+template starts with umask 077? no
+partial mode observed by agy while writing: 644
+published final artifact mode: 600
+
+=== SCENARIO 2: cleanup removes final + partial + log, keeps unrelated ===
+before: agy-g1.log
+result-g1.json
+result-g1.json.tmp
+result-g1.json.tmp.12345
+unrelated.txt
+after:  unrelated.txt
+OK: exact .tmp partial removed
+OK: pid temp removed
+OK: final result removed
+OK: log removed
+OK: unrelated file preserved
+
+=== SCENARIO 2-ADVERSARIAL: old glob pattern would miss the exact .tmp ===
+pre-fix glob leaves the exact .tmp partial in place (regression reproduced)

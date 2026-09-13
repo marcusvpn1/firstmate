@@ -1,0 +1,10 @@
+=== real agy 1.2.2 --output-format json result (schema-validated by the product) ===
+{"conversation_id":"393d01c1-91c3-4fd1-9e12-a1cd43dc7962","status":"SUCCESS","response":"hello\n","duration_seconds":4.238132,"num_turns":1,"usage":{"input_tokens":12794,"output_tokens":238,"thinking_tokens":237,"cache_read_tokens":8120,"total_tokens":13032}}
+
+=== fm_agy_validate_result ===
+validate-ok
+rc=0
+=== fm_agy_result_status ===
+SUCCESS
+=== fm_agy_result_success ===
+success
