@@ -25,11 +25,11 @@ TMP_ROOT=$(fm_test_tmproot fm-agy-harness)
 PYTHON_BIN=$(command -v python3) || fail "test needs python3"
 PYTHON_BIN_DIR=$(dirname "$PYTHON_BIN")
 BASE_PATH=${FM_TEST_BASE_PATH:-$PYTHON_BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin}
-PINNED_VERSION="1.2.1"
+PINNED_VERSION="1.2.2"
 
 # ---- helpers --------------------------------------------------------------
 
-# A valid real-schema result object (observed agy 1.2.1).
+# A valid real-schema result object (observed agy 1.2.2).
 agy_result_json() {  # <status>
   local status=$1 err=''
   if [ "$status" = ERROR ]; then
@@ -46,14 +46,14 @@ test_agy_detect_finds_installed_binary() {
   fakebin=$(fm_fakebin "$TMP_ROOT/detect-ok")
   cat > "$fakebin/agy" <<'SH'
 #!/usr/bin/env bash
-printf '1.2.1\n'
+printf '1.2.2\n'
 SH
   chmod +x "$fakebin/agy"
 
   rc=0
   out=$(PATH="$fakebin:$BASE_PATH" bash -c '. "$1"; fm_agy_detect' _ "$AGY_LIB" 2>&1) || rc=$?
   expect_code 0 "$rc" "agy_detect failed on a found binary"
-  assert_contains "$out" "1.2.1" "agy_detect did not report version"
+  assert_contains "$out" "1.2.2" "agy_detect did not report version"
   pass "agy_detect finds and reports the installed version"
 }
 
@@ -73,7 +73,7 @@ test_agy_version_pinned_accepts_match() {
   fakebin=$(fm_fakebin "$TMP_ROOT/version-match")
   cat > "$fakebin/agy" <<'SH'
 #!/usr/bin/env bash
-printf '1.2.1\n'
+printf '1.2.2\n'
 SH
   chmod +x "$fakebin/agy"
 
@@ -174,6 +174,52 @@ test_agy_launch_template_contract() {
     fail "template still ends the pane shell with 'exit' (destroys the endpoint)"
   fi
   pass "launch template fixes the -p flag, redirects to a generation-bound temp file, and scrubs ambient secrets"
+}
+
+# The template must make the partial artifact private at creation time, not
+# only chmod the renamed final file: a reader (or another process) can see
+# `$result.json.tmp` between the redirect and the atomic rename. This drives
+# the emitted template with a stubbed agy that records the mode of its own
+# redirected stdout while it still exists, so it fails if `umask 077` is
+# missing or runs after the redirect.
+test_agy_launch_template_protects_partial_artifact() {
+  local dir result worktree brief fakebin template mode out rc
+  dir="$TMP_ROOT/template-privacy"
+  result="$dir/result.json"
+  worktree="$dir/worktree"
+  brief="$dir/brief.md"
+  mkdir -p "$worktree"
+  printf 'do the thing\n' > "$brief"
+
+  fakebin=$(fm_fakebin "$dir/fake")
+  cat > "$fakebin/agy" <<SH
+#!/usr/bin/env bash
+{ stat -c '%a' "$result.tmp" 2>/dev/null || stat -f '%Lp' "$result.tmp"; } > "$dir/partial-mode"
+printf '{"status":"SUCCESS"}\n'
+SH
+  cat > "$fakebin/opinput" <<'SH'
+#!/usr/bin/env bash
+printf 'encoded-brief\n'
+SH
+  chmod +x "$fakebin/agy" "$fakebin/opinput"
+
+  template=$(bash -c '. "$1"; fm_agy_launch_template' _ "$AGY_LIB")
+  template=${template//__WORKTREE__/$worktree}
+  template=${template//__BRIEF__/$brief}
+  template=${template//__OPINPUT__/opinput}
+  template=${template//__AGYRESULT__/$result}
+  template=${template//__AGYLOGFILE__/$dir/agy.log}
+  template=${template//__MODELFLAG__/}
+  template=${template//__EFFORTFLAG__/}
+
+  rc=0
+  out=$(PATH="$fakebin:$BASE_PATH" FM_AGY_PRINT_TIMEOUT=600 bash -c "$template" 2>&1) || rc=$?
+  expect_code 0 "$rc" "the emitted launch template failed to run"
+  assert_present "$result" "the emitted launch template did not publish a result"
+  mode=$(cat "$dir/partial-mode" 2>/dev/null || true)
+  [ "$mode" = 600 ] || fail "partial result artifact was created with mode '$mode', not 600: $out"
+  [ "$(stat -c '%a' "$result" 2>/dev/null || stat -f '%Lp' "$result")" = 600 ] || fail "published result artifact is not private"
+  pass "the launch template creates the partial result artifact private (600) before agy writes it"
 }
 
 test_agy_env_scrub_removes_secrets_preserves_others() {
@@ -382,16 +428,20 @@ test_agy_denied_actions_not_success() {
 # ---- cleanup --------------------------------------------------------------
 
 test_agy_cleanup_removes_result_artifacts() {
-  local dir task_id f
+  local dir task_id f tmp
   task_id=cleanup-test-01
   dir=$(bash -c '. "$1"; fm_agy_ensure_result_dir "$2"' _ "$AGY_LIB" "$task_id")
   f=$(bash -c '. "$1"; fm_agy_result_file "$2" g1' _ "$AGY_LIB" "$task_id")
+  tmp="${f}.tmp"
   printf '{"status":"SUCCESS"}\n' > "$f"
+  printf 'partial\n' > "$tmp"
   assert_present "$f" "result file not created"
+  assert_present "$tmp" "partial result file not created"
 
   bash -c '. "$1"; fm_agy_cleanup "$2"' _ "$AGY_LIB" "$task_id"
   assert_absent "$f" "result file survived cleanup"
-  pass "cleanup removes the task's agy result artifacts"
+  assert_absent "$tmp" "partial result file survived cleanup"
+  pass "cleanup removes the task's agy result and partial artifacts"
 }
 
 # ---- liveness -------------------------------------------------------------
@@ -757,6 +807,7 @@ test_agy_auth_status_failed
 test_agy_result_file_binds_generation
 test_agy_result_file_refuses_unsafe_task_id
 test_agy_launch_template_contract
+test_agy_launch_template_protects_partial_artifact
 test_agy_env_scrub_removes_secrets_preserves_others
 test_agy_publish_result_atomic
 test_agy_publish_result_rejects_empty
